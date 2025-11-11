@@ -97,7 +97,10 @@ class TestUserService(unittest.TestCase):
             "correct_password", "hashed_password"
         )
         self.mock_token_provider.create_access_token.assert_called_once_with(
-            data={"sub": "test@example.com"}
+            data={
+                "sub": str(self.test_user_domain.id),
+                "email": "test@example.com",
+            }
         )
         self.assertEqual(result.access_token, "test_token")
 

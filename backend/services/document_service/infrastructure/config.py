@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     MINIO_BUCKET_NAME: str = "documents"
     REDIS_URL: str
     OCR_QUEUE_NAME: str = "ocr_jobs"
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
 
     class Config:
         env_file = ".env"

@@ -73,6 +73,8 @@ class UserServiceImpl(UserService):
         if not self.password_hasher.verify(password, user.hashed_password):
             raise InvalidCredentialsError("Invalid email or password.")
 
-        access_token = self.token_provider.create_access_token(data={"sub": user.email})
+        access_token = self.token_provider.create_access_token(
+            data={"sub": str(user.id), "email": user.email}
+        )
 
         return Token(access_token=access_token, token_type="bearer")
