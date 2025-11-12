@@ -1,6 +1,6 @@
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 
 from shared.models.base_models import DocumentJob as DocumentJobResponse
 from services.document_service.application.ports.input.document_service import (
@@ -10,6 +10,7 @@ from services.document_service.application.exceptions import (
     JobNotFoundError,
     JobAccessForbiddenError,
 )
+from services.document_service.application.domain.document_job import DocumentType
 from services.document_service.infrastructure.dependencies import get_document_service
 from services.document_service.infrastructure.security import get_current_user_id
 
@@ -21,14 +22,23 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 )
 def upload_document(
     file: UploadFile = File(...),
+    document_type: DocumentType = Form(...),
     user_id: uuid.UUID = Depends(get_current_user_id),
     doc_service: DocumentService = Depends(get_document_service),
 ):
     try:
         job = doc_service.start_document_processing(
-            user_id=user_id, file_name=file.filename, file_content=file.file
+            user_id=user_id,
+            file_name=file.filename,
+            file_content=file.file,
+            document_type=document_type,
         )
         return job
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

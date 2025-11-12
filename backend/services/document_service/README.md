@@ -12,7 +12,7 @@ Este serviço gerencia o upload, processamento e consulta de documentos.
 ## Arquitetura de Processamento
 
 1. O cliente envia um arquivo para o endpoint `/upload`.
-2. O serviço `document_service` salva o arquivo no Minio e cria um `DocumentJob` no banco de dados com o status `PENDING`.
+2. O serviço `document_service` salva o arquivo no Minio e cria um `DocumentJob` no banco de dados com o status inicial `processando` e o `document_type` informado.
 3. Uma mensagem contendo o `job_id` é enviada para a fila `ocr_jobs` no Redis.
 4. O `document-worker` (um processo separado) consome a mensagem da fila.
 5. O worker usa o `job_id` para buscar os detalhes do trabalho, baixa o arquivo do Minio, executa o processamento (ex: OCR) e atualiza o status do `DocumentJob` para `COMPLETED` ou `FAILED`.
@@ -29,7 +29,8 @@ Faz o upload de um documento para processamento.
   - `Authorization: Bearer <seu-token-jwt>`
 
 - **Request Body (form-data):**
-  - `file`: O arquivo a ser enviado.
+- `file`: O arquivo a ser enviado (formatos suportados: PDF, JPG, PNG).
+- `document_type`: Tipo do documento de acordo com os valores aceitos (ex.: `NOTA_FISCAL_EMITIDA`).
 
 - **Response (202 ACCEPTED):**
   Retorna o trabalho de processamento que foi criado.
@@ -37,8 +38,9 @@ Faz o upload de um documento para processamento.
   {
     "id": "uuid",
     "user_id": "uuid",
-    "file_name": "string",
-    "status": "PENDING",
+    "file_path": "string",
+    "document_type": "NOTA_FISCAL_EMITIDA",
+    "status": "processando",
     "created_at": "datetime"
   }
   ```
@@ -58,8 +60,9 @@ Consulta o status de um trabalho de processamento específico.
   {
     "id": "uuid",
     "user_id": "uuid",
-    "file_name": "string",
-    "status": "PENDING" | "COMPLETED" | "FAILED",
+    "file_path": "string",
+    "document_type": "NOTA_FISCAL_EMITIDA",
+    "status": "processando" | "concluido" | "falhou",
     "created_at": "datetime"
   }
   ```
@@ -81,8 +84,9 @@ Lista todos os trabalhos de processamento de um usuário.
     {
       "id": "uuid",
       "user_id": "uuid",
-      "file_name": "string",
-      "status": "string",
+      "file_path": "string",
+      "document_type": "NOTA_FISCAL_EMITIDA",
+      "status": "processando" | "concluido" | "falhou",
       "created_at": "datetime"
     }
   ]

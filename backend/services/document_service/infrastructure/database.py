@@ -5,7 +5,7 @@ from sqlalchemy.ext.declarative import declarative_base
 import uuid
 from datetime import datetime
 
-from ..application.domain.document_job import ProcessingStatus
+from ..application.domain.document_job import DocumentType, ProcessingStatus
 from .config import settings
 
 engine = create_engine(settings.DATABASE_URL)
@@ -20,8 +20,9 @@ class DocumentJobModel(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     file_path = Column(String, nullable=False)
+    document_type = Column(Enum(DocumentType), nullable=False)
     status = Column(
-        Enum(ProcessingStatus), nullable=False, default=ProcessingStatus.PENDING
+        Enum(ProcessingStatus), nullable=False, default=ProcessingStatus.PROCESSING
     )
     extracted_data = Column(JSONB)
     error_message = Column(String)

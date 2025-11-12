@@ -24,6 +24,7 @@ class PostgresDocumentJobRepository(DocumentJobRepository):
             self.db.add(job_model)
         else:
             job_model.status = job.status
+            job_model.document_type = job.document_type
             job_model.extracted_data = job.extracted_data
             job_model.error_message = job.error_message
 

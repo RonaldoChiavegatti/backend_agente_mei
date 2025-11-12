@@ -12,7 +12,10 @@ sys.path.insert(0, str(project_root))
 from services.document_service.application.services.document_service_impl import (
     DocumentServiceImpl,
 )
-from services.document_service.application.domain.document_job import DocumentJob
+from services.document_service.application.domain.document_job import (
+    DocumentJob,
+    DocumentType,
+)
 from services.document_service.application.exceptions import (
     JobNotFoundError,
     JobAccessForbiddenError,
@@ -45,6 +48,7 @@ class TestDocumentService(unittest.TestCase):
             id=self.job_id,
             user_id=self.user_id,
             file_path=f"documents/{self.user_id}/test.pdf",
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
         )
 
     def test_start_document_processing_success(self):
@@ -59,7 +63,10 @@ class TestDocumentService(unittest.TestCase):
 
         # Act
         result = self.doc_service.start_document_processing(
-            user_id=self.user_id, file_name=file_name, file_content=file_content
+            user_id=self.user_id,
+            file_name=file_name,
+            file_content=file_content,
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
         )
 
         # Assert
@@ -67,7 +74,11 @@ class TestDocumentService(unittest.TestCase):
         self.mock_job_repo.save.assert_called_once()
         self.mock_message_queue.publish_message.assert_called_once_with(
             queue_name="test_ocr_queue",
-            message={"job_id": str(self.job_id), "file_path": self.test_job.file_path},
+            message={
+                "job_id": str(self.job_id),
+                "file_path": self.test_job.file_path,
+                "document_type": self.test_job.document_type.value,
+            },
         )
         self.assertEqual(result.id, self.job_id)
 
@@ -111,6 +122,18 @@ class TestDocumentService(unittest.TestCase):
         # Assert
         self.mock_job_repo.get_by_user_id.assert_called_once_with(self.user_id)
         self.assertEqual(len(result), 2)
+
+    def test_start_document_processing_invalid_extension(self):
+        file_content = BytesIO(b"dummy file content")
+        file_name = "test.txt"
+
+        with self.assertRaises(ValueError):
+            self.doc_service.start_document_processing(
+                user_id=self.user_id,
+                file_name=file_name,
+                file_content=file_content,
+                document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+            )
 
 
 if __name__ == "__main__":

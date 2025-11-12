@@ -44,13 +44,25 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
 );
 
 -- Tabela de Documentos / Jobs de Processamento (Document Service)
-CREATE TYPE processing_status AS ENUM ('''PENDING''', '''PROCESSING''', '''COMPLETED''', '''FAILED''');
+CREATE TYPE processing_status AS ENUM ('''pendente''', '''processando''', '''concluido''', '''falhou''');
+CREATE TYPE document_type AS ENUM (
+    '''NOTA_FISCAL_EMITIDA''',
+    '''NOTA_FISCAL_RECEBIDA''',
+    '''INFORME_BANCARIO''',
+    '''DESPESA_DEDUTIVEL''',
+    '''INFORME_RENDIMENTOS''',
+    '''DASN_SIMEI''',
+    '''RECIBO_IR_ANTERIOR''',
+    '''DOC_IDENTIFICACAO''',
+    '''COMPROVANTE_ENDERECO'''
+);
 
 CREATE TABLE IF NOT EXISTS document_processing_jobs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     file_path VARCHAR(1024) NOT NULL, -- Caminho no MinIO
-    status processing_status NOT NULL DEFAULT '''PENDING''',
+    document_type document_type NOT NULL,
+    status processing_status NOT NULL DEFAULT '''processando''',
     extracted_data JSONB,
     error_message TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

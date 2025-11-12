@@ -2,7 +2,11 @@ import pathlib
 import uuid
 from typing import IO, List
 
-from services.document_service.application.domain.document_job import DocumentJob
+from services.document_service.application.domain.document_job import (
+    DocumentJob,
+    DocumentType,
+    ProcessingStatus,
+)
 from services.document_service.application.exceptions import (
     JobAccessForbiddenError,
     JobNotFoundError,
@@ -38,18 +42,30 @@ class DocumentServiceImpl(DocumentService):
         self.ocr_queue_name = ocr_queue_name
 
     def start_document_processing(
-        self, user_id: uuid.UUID, file_name: str, file_content: IO[bytes]
+        self,
+        user_id: uuid.UUID,
+        file_name: str,
+        file_content: IO[bytes],
+        document_type: DocumentType,
     ) -> DocumentJobResponse:
         """
         Handles the business logic for starting a document processing job.
-        1. Creates a unique path for the file.
-        2. Uploads the file to storage.
-        3. Creates a new DocumentJob domain entity.
-        4. Saves the job to the repository.
-        5. Publishes a message to the OCR queue.
-        6. Returns the created job as a response DTO.
+        1. Validates the file metadata (name and extension).
+        2. Creates a unique path for the file.
+        3. Uploads the file to storage.
+        4. Creates a new DocumentJob domain entity with the provided document type.
+        5. Saves the job to the repository.
+        6. Publishes a message to the OCR queue.
+        7. Returns the created job as a response DTO.
         """
-        file_extension = pathlib.Path(file_name).suffix
+        if not file_name:
+            raise ValueError("Arquivo sem nome não pode ser processado.")
+
+        file_extension = pathlib.Path(file_name).suffix.lower()
+        allowed_extensions = {".pdf", ".png", ".jpg", ".jpeg"}
+        if file_extension not in allowed_extensions:
+            raise ValueError("Formato de arquivo não suportado. Use PDF, JPG ou PNG.")
+
         unique_file_name = f"{uuid.uuid4()}{file_extension}"
         storage_path = f"documents/{user_id}/{unique_file_name}"
 
@@ -57,13 +73,22 @@ class DocumentServiceImpl(DocumentService):
         self.file_storage.upload(file_obj=file_content, destination_path=storage_path)
 
         # 2. Create and save job
-        job = DocumentJob(user_id=user_id, file_path=storage_path)
+        job = DocumentJob(
+            user_id=user_id,
+            file_path=storage_path,
+            document_type=document_type,
+            status=ProcessingStatus.PROCESSING,
+        )
         saved_job = self.job_repository.save(job)
 
         # 3. Publish message
         self.message_queue.publish_message(
             queue_name=self.ocr_queue_name,
-            message={"job_id": str(saved_job.id), "file_path": saved_job.file_path},
+            message={
+                "job_id": str(saved_job.id),
+                "file_path": saved_job.file_path,
+                "document_type": saved_job.document_type.value,
+            },
         )
 
         return DocumentJobResponse.model_validate(saved_job, from_attributes=True)

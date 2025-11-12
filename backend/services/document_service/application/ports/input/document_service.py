@@ -3,6 +3,7 @@ from typing import IO, List
 import uuid
 
 from shared.models.base_models import DocumentJob as DocumentJobResponse
+from services.document_service.application.domain.document_job import DocumentType
 
 
 class DocumentService(ABC):
@@ -10,7 +11,11 @@ class DocumentService(ABC):
 
     @abstractmethod
     def start_document_processing(
-        self, user_id: uuid.UUID, file_name: str, file_content: IO[bytes]
+        self,
+        user_id: uuid.UUID,
+        file_name: str,
+        file_content: IO[bytes],
+        document_type: DocumentType,
     ) -> DocumentJobResponse:
         """
         Use case for uploading a document and starting the processing workflow.
