@@ -1,6 +1,7 @@
 -- Habilita a extensão para UUIDs se não estiver habilitada
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS plpgsql;
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Tabela de Usuários (Auth Service)
 CREATE TABLE IF NOT EXISTS users (
@@ -42,6 +43,21 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
     embedding JSONB, -- Alterado para JSONB para compatibilidade inicial. Pode ser trocado por VECTOR.
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Chunks com embeddings específicos por usuário para RAG (Agent Service)
+CREATE TABLE IF NOT EXISTS user_rag_chunks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    source VARCHAR(100) NOT NULL,
+    source_id VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    embedding VECTOR(384) NOT NULL,
+    metadata JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, source, source_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_user_id ON user_rag_chunks(user_id);
 
 -- Tabela de Documentos / Jobs de Processamento (Document Service)
 CREATE TYPE processing_status AS ENUM ('''pendente''', '''processando''', '''concluido''', '''falhou''');
