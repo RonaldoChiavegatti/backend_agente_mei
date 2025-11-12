@@ -60,6 +60,32 @@ class FinancialSummaryBuilderTestCase(unittest.TestCase):
         self.assertIn("NOTA_FISCAL_EMITIDA", summary.revenues.breakdown)
         self.assertIn("DESPESA_DEDUTIVEL", summary.expenses.breakdown)
 
+    def test_extract_values_from_nested_payloads(self):
+        records = [
+            DocumentRecord(
+                document_type="NOTA_FISCAL_EMITIDA",
+                extracted_data={
+                    "dados": {
+                        "itens": [
+                            {"detalhes": {"valor": "1.200,00"}},
+                            {"detalhes": {"montante": 300}},
+                            {"detalhes": {"valores": ["150,25", 50]}},
+                        ],
+                        "resumo": {"subtotal": {"quantia_liquida": "99,75"}},
+                    }
+                },
+            )
+        ]
+        repository = _StubDocumentRepository(records)
+        builder = FinancialSummaryBuilder(repository)
+
+        summary = builder.build_summary(self.user_id)
+
+        expected_total = 1200.0 + 300.0 + 150.25 + 50.0 + 99.75
+        self.assertAlmostEqual(summary.revenues.total, expected_total)
+        self.assertEqual(summary.expenses.total, 0.0)
+        self.assertIn("NOTA_FISCAL_EMITIDA", summary.revenues.breakdown)
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
