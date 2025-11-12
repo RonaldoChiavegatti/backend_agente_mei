@@ -21,7 +21,13 @@ from services.document_service.application.ports.output.file_storage import File
 from services.document_service.application.ports.output.message_queue import (
     MessageQueue,
 )
+from services.document_service.application.services.document_details_formatter import (
+    build_document_details,
+)
 from shared.models.base_models import DocumentJob as DocumentJobResponse
+from services.document_service.application.dto.document_details import (
+    DocumentDetailsResponse,
+)
 
 
 class DocumentServiceImpl(DocumentService):
@@ -115,3 +121,15 @@ class DocumentServiceImpl(DocumentService):
             DocumentJobResponse.model_validate(job, from_attributes=True)
             for job in jobs
         ]
+
+    def get_job_details(
+        self, job_id: uuid.UUID, user_id: uuid.UUID
+    ) -> DocumentDetailsResponse:
+        job = self.job_repository.get_by_id(job_id)
+        if not job:
+            raise JobNotFoundError(f"Job with ID {job_id} not found.")
+
+        if job.user_id != user_id:
+            raise JobAccessForbiddenError("User does not have access to this job.")
+
+        return build_document_details(job)

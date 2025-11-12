@@ -20,6 +20,9 @@ from services.document_service.application.exceptions import (
     JobAccessForbiddenError,
 )
 from services.document_service.application.domain.document_job import DocumentType
+from services.document_service.application.dto.document_details import (
+    DocumentDetailsResponse,
+)
 from services.document_service.infrastructure.dependencies import get_document_service
 from services.document_service.infrastructure.security import get_current_user_id
 
@@ -64,6 +67,25 @@ def get_job_status_endpoint(
     try:
         job = doc_service.get_job_status(job_id=job_id, user_id=user_id)
         return job
+    except JobNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except JobAccessForbiddenError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+@router.get("/jobs/{job_id}/details", response_model=DocumentDetailsResponse)
+def get_job_details_endpoint(
+    job_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    doc_service: DocumentService = Depends(get_document_service),
+):
+    try:
+        details = doc_service.get_job_details(job_id=job_id, user_id=user_id)
+        return details
     except JobNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except JobAccessForbiddenError as e:

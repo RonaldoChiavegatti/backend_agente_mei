@@ -3,8 +3,91 @@ from unittest.mock import MagicMock
 import uuid
 from io import BytesIO
 
+import importlib.metadata
 import sys
+import types
 from pathlib import Path
+
+
+def _install_dependency_stubs():
+    if "email_validator" not in sys.modules:
+        email_module = types.ModuleType("email_validator")
+
+        class EmailNotValidError(ValueError):
+            pass
+
+        def validate_email(address: str, *args, **kwargs):
+            if "@" not in address:
+                raise EmailNotValidError("Invalid email address")
+            local, _, domain = address.partition("@")
+            if not local or not domain:
+                raise EmailNotValidError("Invalid email address")
+            return types.SimpleNamespace(
+                email=address, local_part=local, domain=domain
+            )
+
+        email_module.EmailNotValidError = EmailNotValidError
+        email_module.validate_email = validate_email
+        email_module.__all__ = ["validate_email", "EmailNotValidError"]
+        sys.modules["email_validator"] = email_module
+
+        original_distribution = importlib.metadata.distribution
+
+        def distribution_stub(name: str):
+            if name == "email-validator":
+                class _Distribution:
+                    def __init__(self):
+                        self.version = "2.0.0"
+                        self._metadata = {
+                            "Name": "email-validator",
+                            "Version": self.version,
+                        }
+
+                    @property
+                    def metadata(self):
+                        return self._metadata
+
+                    def read_text(self, filename: str):
+                        if filename == "METADATA":
+                            return "Name: email-validator\nVersion: 2.0.0"
+                        raise FileNotFoundError(filename)
+
+                return _Distribution()
+            return original_distribution(name)
+
+        importlib.metadata.distribution = distribution_stub
+
+    if "minio" not in sys.modules:
+        minio_module = types.ModuleType("minio")
+
+        class Minio:
+            def __init__(self, *args, **kwargs):
+                self.bucket_objects = {}
+
+            def bucket_exists(self, bucket_name: str) -> bool:
+                return True
+
+            def make_bucket(self, bucket_name: str) -> None:
+                self.bucket_objects.setdefault(bucket_name, set())
+
+            def put_object(self, bucket_name: str, object_name: str, data, length: int) -> None:
+                bucket = self.bucket_objects.setdefault(bucket_name, set())
+                bucket.add(object_name)
+
+        error_module = types.ModuleType("minio.error")
+
+        class S3Error(RuntimeError):
+            pass
+
+        error_module.S3Error = S3Error
+        minio_module.Minio = Minio
+        minio_module.error = error_module
+
+        sys.modules["minio"] = minio_module
+        sys.modules["minio.error"] = error_module
+
+
+_install_dependency_stubs()
 
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
@@ -15,6 +98,7 @@ from services.document_service.application.services.document_service_impl import
 from services.document_service.application.domain.document_job import (
     DocumentJob,
     DocumentType,
+    ProcessingStatus,
 )
 from services.document_service.application.exceptions import (
     JobNotFoundError,
@@ -26,6 +110,9 @@ from services.document_service.application.ports.output.document_job_repository 
 from services.document_service.application.ports.output.file_storage import FileStorage
 from services.document_service.application.ports.output.message_queue import (
     MessageQueue,
+)
+from services.document_service.application.dto.document_details import (
+    DocumentDetailsResponse,
 )
 
 
@@ -121,7 +208,7 @@ class TestDocumentService(unittest.TestCase):
 
         # Assert
         self.mock_job_repo.get_by_user_id.assert_called_once_with(
-            self.user_id, document_type=None
+            user_id=self.user_id, document_type=None
         )
         self.assertEqual(len(result), 2)
 
@@ -137,7 +224,8 @@ class TestDocumentService(unittest.TestCase):
 
         # Assert
         self.mock_job_repo.get_by_user_id.assert_called_once_with(
-            self.user_id, document_type=DocumentType.NOTA_FISCAL_EMITIDA
+            user_id=self.user_id,
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
         )
         self.assertEqual(len(result), 1)
 
@@ -152,6 +240,87 @@ class TestDocumentService(unittest.TestCase):
                 file_content=file_content,
                 document_type=DocumentType.NOTA_FISCAL_EMITIDA,
             )
+
+    def test_get_job_details_success(self):
+        extracted_data = {
+            "valor": 1500.0,
+            "data": "2025-03-10",
+            "natureza": "receita",
+            "categoria": "faturamento MEI",
+        }
+        job_with_data = DocumentJob(
+            id=self.job_id,
+            user_id=self.user_id,
+            file_path=f"documents/{self.user_id}/nota.pdf",
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data=extracted_data,
+        )
+
+        self.mock_job_repo.get_by_id.return_value = job_with_data
+
+        details = self.doc_service.get_job_details(
+            job_id=self.job_id, user_id=self.user_id
+        )
+
+        self.assertIsInstance(details, DocumentDetailsResponse)
+        self.assertEqual(details.valor, 1500.0)
+        self.assertEqual(details.valor_formatado, "R$ 1.500,00")
+        self.assertEqual(details.data, "2025-03-10")
+        self.assertEqual(details.data_formatada, "10/03/2025")
+        self.assertEqual(details.natureza, "receita")
+        self.assertEqual(details.categoria, "faturamento MEI")
+        self.assertEqual(
+            details.resumo,
+            "Nota Fiscal emitida em 10/03/2025 – Receita: R$ 1.500,00",
+        )
+        self.assertEqual(details.source_group, "nota_fiscal")
+        self.assertEqual(details.source_group_label, "Notas Fiscais")
+
+    def test_get_job_details_not_found(self):
+        self.mock_job_repo.get_by_id.return_value = None
+
+        with self.assertRaises(JobNotFoundError):
+            self.doc_service.get_job_details(
+                job_id=self.job_id, user_id=self.user_id
+            )
+
+    def test_get_job_details_forbidden(self):
+        other_user_id = uuid.uuid4()
+        self.mock_job_repo.get_by_id.return_value = self.test_job
+
+        with self.assertRaises(JobAccessForbiddenError):
+            self.doc_service.get_job_details(
+                job_id=self.job_id, user_id=other_user_id
+            )
+
+    def test_get_job_details_dasn_summary(self):
+        extracted_data = {
+            "lucro_isento": "12500,00",
+            "lucro_tributavel": "3500.5",
+            "data": "2024-02-15",
+        }
+        dasn_job = DocumentJob(
+            id=self.job_id,
+            user_id=self.user_id,
+            file_path=f"documents/{self.user_id}/dasn.pdf",
+            document_type=DocumentType.DASN_SIMEI,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data=extracted_data,
+        )
+        self.mock_job_repo.get_by_id.return_value = dasn_job
+
+        details = self.doc_service.get_job_details(
+            job_id=self.job_id, user_id=self.user_id
+        )
+
+        self.assertEqual(details.document_label, "DASN-SIMEI")
+        self.assertIn("Lucro isento", details.resumo)
+        self.assertIn("Lucro tributável", details.resumo)
+        self.assertIn("lucro_isento", details.extras)
+        self.assertEqual(
+            details.extras["lucro_isento"]["valor_formatado"], "R$ 12.500,00"
+        )
 
 
 if __name__ == "__main__":

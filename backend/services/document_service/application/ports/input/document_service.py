@@ -4,6 +4,9 @@ import uuid
 
 from shared.models.base_models import DocumentJob as DocumentJobResponse
 from services.document_service.application.domain.document_job import DocumentType
+from services.document_service.application.dto.document_details import (
+    DocumentDetailsResponse,
+)
 
 
 class DocumentService(ABC):
@@ -38,4 +41,11 @@ class DocumentService(ABC):
         """
         Use case for retrieving all jobs for a specific user.
         """
+        pass
+
+    @abstractmethod
+    def get_job_details(
+        self, job_id: uuid.UUID, user_id: uuid.UUID
+    ) -> DocumentDetailsResponse:
+        """Return a normalized view of the extracted data for a job."""
         pass
