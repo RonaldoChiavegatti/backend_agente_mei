@@ -110,16 +110,26 @@ class FinancialSummaryBuilder:
             for item in payload:
                 if isinstance(item, dict):
                     values.extend(self._extract_values(item))
+                elif isinstance(item, list):
+                    values.extend(self._extract_values(item))
+                else:
+                    amount = _coerce_amount(item)
+                    if amount is not None:
+                        values.append(amount)
             return values
 
         if isinstance(payload, dict):
             values = []
             for key, value in payload.items():
-                normalized_key = _normalize_key(key)
+                normalized_key = _normalize_key(str(key))
                 if any(fragment in normalized_key for fragment in ["valor", "total", "montante", "quantia"]):
                     amount = _coerce_amount(value)
                     if amount is not None:
                         values.append(amount)
+                    elif isinstance(value, (dict, list)):
+                        values.extend(self._extract_values(value))
+                elif isinstance(value, (dict, list)):
+                    values.extend(self._extract_values(value))
             return values
 
         if isinstance(payload, (int, float)):
