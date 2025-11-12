@@ -121,17 +121,19 @@ class FinancialSummaryBuilder:
                 for key, value in node.items():
                     normalized_key = _normalize_key(str(key))
                     key_matches = has_target(normalized_key)
+                    active_context = normalized_key if key_matches else context_key
 
                     if not isinstance(value, (dict, list, tuple, set)):
-                        if key_matches:
+                        if key_matches or (
+                            active_context is not None and has_target(active_context)
+                        ):
                             amount = _coerce_amount(value)
                             if amount is not None:
                                 values.append(amount)
                         continue
 
                     # Recurse into nested payloads, keeping the first matching key
-                    next_context = normalized_key if key_matches else context_key
-                    visit(value, next_context)
+                    visit(value, active_context)
                 return
 
             if isinstance(node, (list, tuple, set)):
