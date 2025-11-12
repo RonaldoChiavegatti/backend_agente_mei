@@ -14,3 +14,9 @@ class InvalidCredentialsError(ApplicationError):
     """Raised when login credentials are invalid."""
 
     pass
+
+
+class UserNotFoundError(ApplicationError):
+    """Raised when the requested user does not exist."""
+
+    pass

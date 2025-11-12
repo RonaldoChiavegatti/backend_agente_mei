@@ -36,21 +36,22 @@ class OrchestratorServiceImpl(OrchestratorService):
         self.llm_provider = llm_provider
         self.billing_service = billing_service
 
-    def _construct_prompt(self, query: str, context_docs: List[str]) -> str:
-        """Helper function to construct the final prompt for the LLM."""
-        context = "\n\n".join(context_docs)
+    def _construct_prompt(self, context_docs: List[str]) -> str:
+        """Helper function to construct the system prompt for the LLM."""
+        if context_docs:
+            context = "\n\n".join(context_docs)
+        else:
+            context = "Nenhum conhecimento específico foi encontrado para esta pergunta."
 
         prompt = f"""
         Você é um agente de IA especialista em contabilidade para Microempreendedores Individuais (MEI) no Brasil.
-        Use o seguinte contexto para responder à pergunta do usuário de forma precisa e amigável.
-        Se a resposta não estiver no contexto, diga que você não tem essa informação.
+        Utilize o contexto abaixo para responder de forma amigável, objetiva e sempre em português brasileiro.
+        Se a resposta não estiver no contexto, informe que você não possui dados suficientes.
 
         Contexto:
         ---
         {context}
         ---
-
-        Pergunta do Usuário: {query}
         """
         return prompt.strip()
 
@@ -70,9 +71,18 @@ class OrchestratorServiceImpl(OrchestratorService):
         )
         context_docs = [doc.content for doc in relevant_knowledge]
 
-        final_prompt = self._construct_prompt(user_message, context_docs)
+        system_prompt = self._construct_prompt(context_docs)
 
-        llm_messages = [Message(role="user", content=final_prompt)]
+        llm_messages: List[Message] = [Message(role="system", content=system_prompt)]
+
+        if conversation_history:
+            # Ensure we don't mutate the incoming history list when appending
+            llm_messages.extend(
+                Message(role=msg.role, content=msg.content)
+                for msg in conversation_history
+            )
+
+        llm_messages.append(Message(role="user", content=user_message))
 
         assistant_response = self.llm_provider.generate_response(llm_messages)
 

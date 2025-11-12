@@ -17,7 +17,13 @@ class GeminiLLMProvider(LLMProvider):
         self.api_url = f"{api_url}?key={self.api_key}"
 
     def generate_response(self, messages: List[Message]) -> str:
-        contents = [{"parts": [{"text": msg.content}] for msg in messages}]
+        contents = [
+            {
+                "role": msg.role,
+                "parts": [{"text": msg.content}],
+            }
+            for msg in messages
+        ]
         payload = {"contents": contents}
 
         try:
