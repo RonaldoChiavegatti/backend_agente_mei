@@ -1,10 +1,16 @@
-from fastapi import APIRouter
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+
+from app.api.dependencies import get_chat_service
+from app.services.chat import AgentChatService
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
 
 class ChatRequest(BaseModel):
+    user_id: UUID
     question: str
 
 
@@ -14,8 +20,10 @@ def health_check():
 
 
 @router.post("/chat")
-def chat(payload: ChatRequest):
-    return {
-        "answer": "Ainda vou te responder de verdade 😄 (implementar LLM aqui)",
-        "debug": {"question": payload.question},
-    }
+def chat(
+    payload: ChatRequest, service: AgentChatService = Depends(get_chat_service)
+):
+    answer, debug_payload = service.answer_question(
+        user_id=payload.user_id, question=payload.question
+    )
+    return {"answer": answer, "debug": debug_payload}
