@@ -105,41 +105,52 @@ class FinancialSummaryBuilder:
         if payload is None:
             return []
 
-        if isinstance(payload, list):
-            values = []
-            for item in payload:
-                if isinstance(item, dict):
-                    values.extend(self._extract_values(item))
-                elif isinstance(item, list):
-                    values.extend(self._extract_values(item))
-                else:
+        values: list[float] = []
+        target_fragments = ("valor", "total", "montante", "quantia")
+
+        def has_target(text: Optional[str]) -> bool:
+            if not text:
+                return False
+            return any(fragment in text for fragment in target_fragments)
+
+        def visit(node: object, context_key: Optional[str] = None) -> None:
+            if node is None:
+                return
+
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    normalized_key = _normalize_key(str(key))
+                    key_matches = has_target(normalized_key)
+
+                    if not isinstance(value, (dict, list, tuple, set)):
+                        if key_matches:
+                            amount = _coerce_amount(value)
+                            if amount is not None:
+                                values.append(amount)
+                        continue
+
+                    # Recurse into nested payloads, keeping the first matching key
+                    next_context = normalized_key if key_matches else context_key
+                    visit(value, next_context)
+                return
+
+            if isinstance(node, (list, tuple, set)):
+                for item in node:
+                    if isinstance(item, (dict, list, tuple, set)):
+                        visit(item, context_key)
+                        continue
+
                     amount = _coerce_amount(item)
-                    if amount is not None:
+                    if amount is not None and (context_key is None or has_target(context_key)):
                         values.append(amount)
-            return values
+                return
 
-        if isinstance(payload, dict):
-            values = []
-            for key, value in payload.items():
-                normalized_key = _normalize_key(str(key))
-                if any(fragment in normalized_key for fragment in ["valor", "total", "montante", "quantia"]):
-                    amount = _coerce_amount(value)
-                    if amount is not None:
-                        values.append(amount)
-                    elif isinstance(value, (dict, list)):
-                        values.extend(self._extract_values(value))
-                elif isinstance(value, (dict, list)):
-                    values.extend(self._extract_values(value))
-            return values
+            amount = _coerce_amount(node)
+            if amount is not None and (context_key is None or has_target(context_key)):
+                values.append(amount)
 
-        if isinstance(payload, (int, float)):
-            return [float(payload)]
-
-        if isinstance(payload, str):
-            amount = _coerce_amount(payload)
-            return [amount] if amount is not None else []
-
-        return []
+        visit(payload)
+        return values
 
     def _extract_mei_payload(self, payload: object) -> Dict[str, float]:
         results: Dict[str, float] = {}
