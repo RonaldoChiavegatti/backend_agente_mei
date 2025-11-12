@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import IO, List
+from typing import IO, List, Optional
 import uuid
 
 from shared.models.base_models import DocumentJob as DocumentJobResponse
@@ -32,7 +32,9 @@ class DocumentService(ABC):
         pass
 
     @abstractmethod
-    def get_user_jobs(self, user_id: uuid.UUID) -> List[DocumentJobResponse]:
+    def get_user_jobs(
+        self, user_id: uuid.UUID, document_type: Optional[DocumentType] = None
+    ) -> List[DocumentJobResponse]:
         """
         Use case for retrieving all jobs for a specific user.
         """
