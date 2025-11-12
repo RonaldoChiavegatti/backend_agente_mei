@@ -1,6 +1,6 @@
 import pathlib
 import uuid
-from typing import IO, List
+from typing import IO, List, Optional
 
 from services.document_service.application.domain.document_job import (
     DocumentJob,
@@ -105,8 +105,12 @@ class DocumentServiceImpl(DocumentService):
 
         return DocumentJobResponse.model_validate(job, from_attributes=True)
 
-    def get_user_jobs(self, user_id: uuid.UUID) -> List[DocumentJobResponse]:
-        jobs = self.job_repository.get_by_user_id(user_id)
+    def get_user_jobs(
+        self, user_id: uuid.UUID, document_type: Optional[DocumentType] = None
+    ) -> List[DocumentJobResponse]:
+        jobs = self.job_repository.get_by_user_id(
+            user_id=user_id, document_type=document_type
+        )
         return [
             DocumentJobResponse.model_validate(job, from_attributes=True)
             for job in jobs

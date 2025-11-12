@@ -1,7 +1,10 @@
 import uuid
 from typing import List, Optional
 
-from services.document_service.application.domain.document_job import DocumentJob
+from services.document_service.application.domain.document_job import (
+    DocumentJob,
+    DocumentType,
+)
 from services.document_service.application.ports.output.document_job_repository import (
     DocumentJobRepository,
 )
@@ -42,12 +45,17 @@ class PostgresDocumentJobRepository(DocumentJobRepository):
             return DocumentJob.model_validate(job_model, from_attributes=True)
         return None
 
-    def get_by_user_id(self, user_id: uuid.UUID) -> List[DocumentJob]:
-        job_models = (
-            self.db.query(DocumentJobModel)
-            .filter(DocumentJobModel.user_id == user_id)
-            .all()
+    def get_by_user_id(
+        self, user_id: uuid.UUID, document_type: Optional[DocumentType] = None
+    ) -> List[DocumentJob]:
+        query = self.db.query(DocumentJobModel).filter(
+            DocumentJobModel.user_id == user_id
         )
+
+        if document_type:
+            query = query.filter(DocumentJobModel.document_type == document_type)
+
+        job_models = query.order_by(DocumentJobModel.created_at.desc()).all()
         return [
             DocumentJob.model_validate(job, from_attributes=True) for job in job_models
         ]

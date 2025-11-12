@@ -2,7 +2,10 @@ from abc import ABC, abstractmethod
 from typing import Optional, List
 import uuid
 
-from services.document_service.application.domain.document_job import DocumentJob
+from services.document_service.application.domain.document_job import (
+    DocumentJob,
+    DocumentType,
+)
 
 
 class DocumentJobRepository(ABC):
@@ -19,6 +22,8 @@ class DocumentJobRepository(ABC):
         pass
 
     @abstractmethod
-    def get_by_user_id(self, user_id: uuid.UUID) -> List[DocumentJob]:
+    def get_by_user_id(
+        self, user_id: uuid.UUID, document_type: Optional[DocumentType] = None
+    ) -> List[DocumentJob]:
         """Fetches all jobs for a given user."""
         pass

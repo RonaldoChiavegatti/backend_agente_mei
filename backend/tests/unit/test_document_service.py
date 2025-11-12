@@ -120,8 +120,26 @@ class TestDocumentService(unittest.TestCase):
         result = self.doc_service.get_user_jobs(user_id=self.user_id)
 
         # Assert
-        self.mock_job_repo.get_by_user_id.assert_called_once_with(self.user_id)
+        self.mock_job_repo.get_by_user_id.assert_called_once_with(
+            self.user_id, document_type=None
+        )
         self.assertEqual(len(result), 2)
+
+    def test_get_user_jobs_with_filter(self):
+        # Arrange
+        self.mock_job_repo.get_by_user_id.return_value = [self.test_job]
+
+        # Act
+        result = self.doc_service.get_user_jobs(
+            user_id=self.user_id,
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+        )
+
+        # Assert
+        self.mock_job_repo.get_by_user_id.assert_called_once_with(
+            self.user_id, document_type=DocumentType.NOTA_FISCAL_EMITIDA
+        )
+        self.assertEqual(len(result), 1)
 
     def test_start_document_processing_invalid_extension(self):
         file_content = BytesIO(b"dummy file content")

@@ -1,6 +1,15 @@
 import uuid
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from typing import List, Optional
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    status,
+    UploadFile,
+    File,
+    Form,
+)
 
 from shared.models.base_models import DocumentJob as DocumentJobResponse
 from services.document_service.application.ports.input.document_service import (
@@ -68,10 +77,16 @@ def get_job_status_endpoint(
 @router.get("/jobs", response_model=List[DocumentJobResponse])
 def get_user_jobs_endpoint(
     user_id: uuid.UUID = Depends(get_current_user_id),
+    document_type: Optional[DocumentType] = Query(
+        default=None,
+        description="Filtra os documentos pelo tipo informado.",
+    ),
     doc_service: DocumentService = Depends(get_document_service),
 ):
     try:
-        jobs = doc_service.get_user_jobs(user_id=user_id)
+        jobs = doc_service.get_user_jobs(
+            user_id=user_id, document_type=document_type
+        )
         return jobs
     except Exception as e:
         raise HTTPException(
