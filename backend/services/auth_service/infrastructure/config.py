@@ -11,8 +11,8 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
     )
 
-    DATABASE_URL: str
-    SECRET_KEY: str
+    DATABASE_URL: str = "sqlite:///./test.db"
+    SECRET_KEY: str = "insecure-test-key"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 

@@ -1,6 +1,6 @@
 import uuid
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -23,7 +23,7 @@ router = APIRouter()
 class ChatRequest(BaseModel):
     agent_id: uuid.UUID
     user_message: str
-    conversation_history: Optional[List[Message]] = []
+    conversation_history: Optional[List[Message]] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
