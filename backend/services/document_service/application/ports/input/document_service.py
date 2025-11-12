@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import IO, List, Optional
+from typing import IO, Dict, Any, List, Optional
 import uuid
 
 from shared.models.base_models import DocumentJob as DocumentJobResponse
@@ -48,4 +48,11 @@ class DocumentService(ABC):
         self, job_id: uuid.UUID, user_id: uuid.UUID
     ) -> DocumentDetailsResponse:
         """Return a normalized view of the extracted data for a job."""
+        pass
+
+    @abstractmethod
+    def update_extracted_data(
+        self, job_id: uuid.UUID, user_id: uuid.UUID, payload: Dict[str, Any]
+    ) -> DocumentDetailsResponse:
+        """Apply manual corrections to the extracted payload and version them."""
         pass

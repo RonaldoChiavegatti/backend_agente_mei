@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from services.document_service.application.domain.document_job import (
     DocumentJob,
     DocumentType,
+    ExtractedDataVersion,
 )
 from services.document_service.application.dto.document_details import (
     DocumentDetailsResponse,
+    ExtractedDataChangeResponse,
+    ExtractedDataVersionResponse,
 )
 
 
@@ -148,6 +151,8 @@ def build_document_details(job: DocumentJob) -> DocumentDetailsResponse:
 
     raw_payload = job.extracted_data if isinstance(job.extracted_data, dict) else None
 
+    history = _build_history(job.extracted_data_history)
+
     return DocumentDetailsResponse(
         id=job.id,
         document_type=job.document_type,
@@ -165,9 +170,35 @@ def build_document_details(job: DocumentJob) -> DocumentDetailsResponse:
         resumo=resumo,
         extras=extras,
         raw_extracted_data=raw_payload,
+        history=history,
         created_at=job.created_at,
         updated_at=job.updated_at,
     )
+
+
+def _build_history(
+    versions: Iterable[ExtractedDataVersion],
+) -> List[ExtractedDataVersionResponse]:
+    response: List[ExtractedDataVersionResponse] = []
+    for version in versions:
+        response.append(
+            ExtractedDataVersionResponse(
+                version=version.version,
+                author_type=version.author_type.value,
+                created_at=version.created_at,
+                author_id=version.author_id,
+                data_snapshot=version.data_snapshot,
+                changes=[
+                    ExtractedDataChangeResponse(
+                        field_path=change.field_path,
+                        previous_value=change.previous_value,
+                        current_value=change.current_value,
+                    )
+                    for change in version.changes
+                ],
+            )
+        )
+    return response
 
 
 def _extract_primary_entry(payload: Any) -> Dict[str, Any]:

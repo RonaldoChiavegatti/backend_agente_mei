@@ -1,10 +1,11 @@
 import pathlib
 import uuid
-from typing import IO, List, Optional
+from typing import IO, Dict, Any, List, Optional
 
 from services.document_service.application.domain.document_job import (
     DocumentJob,
     DocumentType,
+    ExtractedDataAuthor,
     ProcessingStatus,
 )
 from services.document_service.application.exceptions import (
@@ -133,3 +134,17 @@ class DocumentServiceImpl(DocumentService):
             raise JobAccessForbiddenError("User does not have access to this job.")
 
         return build_document_details(job)
+
+    def update_extracted_data(
+        self, job_id: uuid.UUID, user_id: uuid.UUID, payload: Dict[str, Any]
+    ) -> DocumentDetailsResponse:
+        job = self.job_repository.get_by_id(job_id)
+        if not job:
+            raise JobNotFoundError(f"Job with ID {job_id} not found.")
+
+        if job.user_id != user_id:
+            raise JobAccessForbiddenError("User does not have access to this job.")
+
+        job.record_version(payload, author_type=ExtractedDataAuthor.USER, author_id=user_id)
+        saved_job = self.job_repository.save(job)
+        return build_document_details(saved_job)

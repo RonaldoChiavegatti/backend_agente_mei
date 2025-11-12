@@ -23,13 +23,25 @@ class PostgresDocumentJobRepository(DocumentJobRepository):
             .first()
         )
         if not job_model:
-            job_model = DocumentJobModel(**job.model_dump())
+            job_data = job.model_dump()
+            history_payload = [
+                version.model_dump(mode="json")
+                for version in job.extracted_data_history
+            ]
+            job_data.pop("extracted_data_history", None)
+            job_model = DocumentJobModel(**job_data)
+            job_model.extracted_data_history = history_payload
             self.db.add(job_model)
         else:
             job_model.status = job.status
             job_model.document_type = job.document_type
             job_model.extracted_data = job.extracted_data
             job_model.error_message = job.error_message
+            job_model.extracted_data_history = [
+                version.model_dump(mode="json")
+                for version in job.extracted_data_history
+            ]
+            job_model.updated_at = job.updated_at
 
         self.db.commit()
         self.db.refresh(job_model)

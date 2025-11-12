@@ -98,6 +98,7 @@ from services.document_service.application.services.document_service_impl import
 from services.document_service.application.domain.document_job import (
     DocumentJob,
     DocumentType,
+    ExtractedDataAuthor,
     ProcessingStatus,
 )
 from services.document_service.application.exceptions import (
@@ -198,6 +199,47 @@ class TestDocumentService(unittest.TestCase):
         # Act & Assert
         with self.assertRaises(JobAccessForbiddenError):
             self.doc_service.get_job_status(job_id=self.job_id, user_id=other_user_id)
+
+    def test_update_extracted_data_success(self):
+        job = DocumentJob(
+            id=self.job_id,
+            user_id=self.user_id,
+            file_path=f"documents/{self.user_id}/test.pdf",
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data={"valor": 100.0},
+        )
+        self.mock_job_repo.get_by_id.return_value = job
+        self.mock_job_repo.save.return_value = job
+
+        result = self.doc_service.update_extracted_data(
+            job_id=self.job_id,
+            user_id=self.user_id,
+            payload={"valor": 150.0},
+        )
+
+        self.mock_job_repo.save.assert_called_once()
+        self.assertEqual(len(job.extracted_data_history), 1)
+        self.assertEqual(job.extracted_data_history[0].author_type, ExtractedDataAuthor.USER)
+        self.assertEqual(result.history[0].changes[0].previous_value, 100.0)
+        self.assertEqual(result.history[0].changes[0].current_value, 150.0)
+
+    def test_update_extracted_data_not_found(self):
+        self.mock_job_repo.get_by_id.return_value = None
+
+        with self.assertRaises(JobNotFoundError):
+            self.doc_service.update_extracted_data(
+                job_id=self.job_id, user_id=self.user_id, payload={}
+            )
+
+    def test_update_extracted_data_forbidden(self):
+        other_user_id = uuid.uuid4()
+        self.mock_job_repo.get_by_id.return_value = self.test_job
+
+        with self.assertRaises(JobAccessForbiddenError):
+            self.doc_service.update_extracted_data(
+                job_id=self.job_id, user_id=other_user_id, payload={}
+            )
 
     def test_get_user_jobs(self):
         # Arrange

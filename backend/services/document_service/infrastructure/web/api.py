@@ -23,6 +23,9 @@ from services.document_service.application.domain.document_job import DocumentTy
 from services.document_service.application.dto.document_details import (
     DocumentDetailsResponse,
 )
+from services.document_service.application.dto.extracted_data_update import (
+    ExtractedDataUpdateRequest,
+)
 from services.document_service.infrastructure.dependencies import get_document_service
 from services.document_service.infrastructure.security import get_current_user_id
 
@@ -113,4 +116,29 @@ def get_user_jobs_endpoint(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+@router.patch(
+    "/jobs/{job_id}/extracted-data",
+    response_model=DocumentDetailsResponse,
+)
+def update_extracted_data_endpoint(
+    job_id: uuid.UUID,
+    payload: ExtractedDataUpdateRequest,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    doc_service: DocumentService = Depends(get_document_service),
+):
+    try:
+        return doc_service.update_extracted_data(
+            job_id=job_id, user_id=user_id, payload=payload.data
+        )
+    except JobNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except JobAccessForbiddenError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
         )

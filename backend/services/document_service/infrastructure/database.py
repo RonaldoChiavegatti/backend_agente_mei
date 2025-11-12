@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, DateTime, Enum
+from sqlalchemy import Column, DateTime, Enum, String, create_engine
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
@@ -25,6 +25,7 @@ class DocumentJobModel(Base):
         Enum(ProcessingStatus), nullable=False, default=ProcessingStatus.PROCESSING
     )
     extracted_data = Column(JSONB)
+    extracted_data_history = Column(JSONB, default=list)
     error_message = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

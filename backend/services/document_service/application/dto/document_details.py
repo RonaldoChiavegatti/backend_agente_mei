@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -11,6 +11,21 @@ from services.document_service.application.domain.document_job import (
     DocumentType,
     ProcessingStatus,
 )
+
+
+class ExtractedDataChangeResponse(BaseModel):
+    field_path: str
+    previous_value: Any = None
+    current_value: Any = None
+
+
+class ExtractedDataVersionResponse(BaseModel):
+    version: int
+    author_type: str
+    created_at: datetime
+    author_id: Optional[uuid.UUID] = None
+    data_snapshot: Dict[str, Any] = Field(default_factory=dict)
+    changes: List[ExtractedDataChangeResponse] = Field(default_factory=list)
 
 
 class DocumentDetailsResponse(BaseModel):
@@ -59,6 +74,10 @@ class DocumentDetailsResponse(BaseModel):
     raw_extracted_data: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Payload bruto recebido do processo de extração para depuração.",
+    )
+    history: List[ExtractedDataVersionResponse] = Field(
+        default_factory=list,
+        description="Histórico de versões manuais ou automáticas do payload extraído.",
     )
     created_at: datetime
     updated_at: datetime

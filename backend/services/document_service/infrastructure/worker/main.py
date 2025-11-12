@@ -9,7 +9,10 @@ from services.document_service.infrastructure.database import SessionLocal
 from services.document_service.infrastructure.adapters.persistence.postgres_document_job_repository import (
     PostgresDocumentJobRepository,
 )
-from services.document_service.application.domain.document_job import ProcessingStatus
+from services.document_service.application.domain.document_job import (
+    ExtractedDataAuthor,
+    ProcessingStatus,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -56,7 +59,9 @@ def process_job(job_data: dict):
 
         # 4. Update status to COMPLETED
         job.status = ProcessingStatus.COMPLETED
-        job.extracted_data = {"text": extracted_text}
+        job.record_version(
+            {"text": extracted_text}, author_type=ExtractedDataAuthor.SYSTEM
+        )
         repo.save(job)
         logging.info(f"Job {job_id} successfully processed and marked as COMPLETED.")
 
