@@ -123,7 +123,7 @@ class FinancialSummaryBuilder:
                     key_matches = has_target(normalized_key)
 
                     if not isinstance(value, (dict, list, tuple, set)):
-                        if key_matches:
+                        if key_matches or (context_key and has_target(context_key)):
                             amount = _coerce_amount(value)
                             if amount is not None:
                                 values.append(amount)
