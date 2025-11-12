@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterable, Optional
 from uuid import UUID
 
+import re
 import unicodedata
 
 from app.services.repositories import DocumentRepository
@@ -212,24 +213,35 @@ def _coerce_amount(value: object) -> Optional[float]:
     return None
 
 
+def _contains_token(text: str, token: str) -> bool:
+    """Return True if the token appears as a whole word within the text."""
+
+    pattern = rf"(?:^|[^a-z0-9]){re.escape(token)}(?:[^a-z0-9]|$)"
+    return re.search(pattern, text) is not None
+
+
 def _is_identifier_like(key: Optional[str], value: object) -> bool:
     """Heuristics to detect metadata fields that should not be treated as amounts."""
 
-    exclusion_fragments = {
-        "chave",
-        "metadata",
-        "metadado",
-        "identificador",
-        "identificacao",
-        "codigo",
-        "cod",
-        "numero",
-        "num",
-        "id",
-    }
+    if key:
+        normalized_key = key.lower()
+        substring_exclusions = {
+            "chave",
+            "metadata",
+            "metadado",
+            "identificador",
+            "identificacao",
+            "codigo",
+            "cod",
+            "numero",
+            "num",
+        }
 
-    if key and any(fragment in key for fragment in exclusion_fragments):
-        return True
+        if any(fragment in normalized_key for fragment in substring_exclusions):
+            return True
+
+        if _contains_token(normalized_key, "id"):
+            return True
 
     if isinstance(value, str):
         digits_only = value.strip().replace(" ", "")
