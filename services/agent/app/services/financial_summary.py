@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterable, Optional
 from uuid import UUID
 
+import re
 import unicodedata
 
 from app.services.repositories import DocumentRepository
@@ -131,10 +132,24 @@ class FinancialSummaryBuilder:
                 for key, value in node.items():
                     normalized_key = _normalize_key(str(key))
                     key_matches = has_target(normalized_key)
-                    next_context = has_target_context or key_matches
+                    active_context = normalized_key if key_matches else context_key
 
-                    if is_container(value):
-                        visit(value, next_context)
+                    if not isinstance(value, (dict, list, tuple, set)):
+                        should_use_value = False
+
+                        if key_matches:
+                            should_use_value = not _is_identifier_like(
+                                normalized_key, value
+                            )
+                        elif active_context is not None and has_target(active_context):
+                            should_use_value = not _is_identifier_like(
+                                normalized_key, value
+                            )
+
+                        if should_use_value:
+                            amount = _coerce_amount(value)
+                            if amount is not None:
+                                values.append(amount)
                         continue
 
                     if key_matches or next_context:
@@ -152,11 +167,25 @@ class FinancialSummaryBuilder:
                         continue
 
                     amount = _coerce_amount(item)
+                    if amount is not None and (
+                        context_key is None
+                        or (
+                            has_target(context_key)
+                            and not _is_identifier_like(None, item)
+                        )
+                    ):
                     if amount is not None and has_target_context:
                         values.append(amount)
                 return
 
             amount = _coerce_amount(node)
+            if amount is not None and (
+                context_key is None
+                or (
+                    has_target(context_key)
+                    and not _is_identifier_like(None, node)
+                )
+            ):
             if amount is not None and has_target_context:
                 values.append(amount)
 
@@ -209,3 +238,41 @@ def _coerce_amount(value: object) -> Optional[float]:
         except ValueError:
             return None
     return None
+
+
+def _contains_token(text: str, token: str) -> bool:
+    """Return True if the token appears as a whole word within the text."""
+
+    pattern = rf"(?:^|[^a-z0-9]){re.escape(token)}(?:[^a-z0-9]|$)"
+    return re.search(pattern, text) is not None
+
+
+def _is_identifier_like(key: Optional[str], value: object) -> bool:
+    """Heuristics to detect metadata fields that should not be treated as amounts."""
+
+    if key:
+        normalized_key = key.lower()
+        substring_exclusions = {
+            "chave",
+            "metadata",
+            "metadado",
+            "identificador",
+            "identificacao",
+            "codigo",
+            "cod",
+            "numero",
+            "num",
+        }
+
+        if any(fragment in normalized_key for fragment in substring_exclusions):
+            return True
+
+        if _contains_token(normalized_key, "id"):
+            return True
+
+    if isinstance(value, str):
+        digits_only = value.strip().replace(" ", "")
+        if digits_only.isdigit() and len(digits_only) >= 8:
+            return True
+
+    return False
