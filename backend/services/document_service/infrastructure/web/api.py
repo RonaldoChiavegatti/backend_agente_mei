@@ -23,6 +23,9 @@ from services.document_service.application.domain.document_job import DocumentTy
 from services.document_service.application.dto.document_details import (
     DocumentDetailsResponse,
 )
+from services.document_service.application.dto.annual_revenue_summary import (
+    AnnualRevenueSummaryResponse,
+)
 from services.document_service.application.dto.extracted_data_update import (
     ExtractedDataUpdateRequest,
 )
@@ -116,6 +119,29 @@ def get_user_jobs_endpoint(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+        )
+
+
+@router.get(
+    "/dashboard/annual-revenue",
+    response_model=AnnualRevenueSummaryResponse,
+)
+def get_annual_revenue_summary_endpoint(
+    year: Optional[int] = Query(
+        default=None,
+        ge=2000,
+        le=2100,
+        description="Ano-calendário considerado para o faturamento.",
+    ),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    doc_service: DocumentService = Depends(get_document_service),
+):
+    try:
+        return doc_service.get_annual_revenue_summary(user_id=user_id, year=year)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
         )
 
 

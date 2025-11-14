@@ -4,6 +4,9 @@ import uuid
 
 from shared.models.base_models import DocumentJob as DocumentJobResponse
 from services.document_service.application.domain.document_job import DocumentType
+from services.document_service.application.dto.annual_revenue_summary import (
+    AnnualRevenueSummaryResponse,
+)
 from services.document_service.application.dto.document_details import (
     DocumentDetailsResponse,
 )
@@ -55,4 +58,11 @@ class DocumentService(ABC):
         self, job_id: uuid.UUID, user_id: uuid.UUID, payload: Dict[str, Any]
     ) -> DocumentDetailsResponse:
         """Apply manual corrections to the extracted payload and version them."""
+        pass
+
+    @abstractmethod
+    def get_annual_revenue_summary(
+        self, user_id: uuid.UUID, year: Optional[int] = None
+    ) -> AnnualRevenueSummaryResponse:
+        """Aggregate the MEI annual revenue for dashboard consumption."""
         pass

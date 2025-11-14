@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import MagicMock
 import uuid
+from datetime import datetime
 from io import BytesIO
 
 import importlib.metadata
@@ -114,6 +115,9 @@ from services.document_service.application.ports.output.message_queue import (
 )
 from services.document_service.application.dto.document_details import (
     DocumentDetailsResponse,
+)
+from services.document_service.application.dto.annual_revenue_summary import (
+    AnnualRevenueSummaryResponse,
 )
 
 
@@ -363,6 +367,96 @@ class TestDocumentService(unittest.TestCase):
         self.assertEqual(
             details.extras["lucro_isento"]["valor_formatado"], "R$ 12.500,00"
         )
+
+    def test_get_annual_revenue_summary(self):
+        nf_job = DocumentJob(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            file_path="/tmp/nf.pdf",
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data={"valor": 10000.0, "data": "2024-01-05"},
+            created_at=datetime(2024, 1, 6),
+        )
+
+        informe_operacional = DocumentJob(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            file_path="/tmp/informe.pdf",
+            document_type=DocumentType.INFORME_RENDIMENTOS,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data={
+                "valor": "25.750,30",
+                "receita_operacional_mei": True,
+                "data": "2024-02-10",
+            },
+            created_at=datetime(2024, 2, 15),
+        )
+
+        informe_nao_operacional = DocumentJob(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            file_path="/tmp/informe2.pdf",
+            document_type=DocumentType.INFORME_RENDIMENTOS,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data={
+                "valor": "9.999,99",
+                "receita_operacional_mei": False,
+                "data": "2024-03-10",
+            },
+            created_at=datetime(2024, 3, 11),
+        )
+
+        dasn_job = DocumentJob(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            file_path="/tmp/dasn.pdf",
+            document_type=DocumentType.DASN_SIMEI,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data={
+                "lucro_tributavel": "3.500,50",
+                "ano_calendario": "2024",
+            },
+            created_at=datetime(2024, 4, 5),
+        )
+
+        old_job = DocumentJob(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            file_path="/tmp/nf_old.pdf",
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data={"valor": 8000.0, "data": "2023-12-30"},
+            created_at=datetime(2023, 12, 31),
+        )
+
+        self.mock_job_repo.get_by_user_id.return_value = [
+            nf_job,
+            informe_operacional,
+            informe_nao_operacional,
+            dasn_job,
+            old_job,
+        ]
+
+        summary = self.doc_service.get_annual_revenue_summary(
+            user_id=self.user_id, year=2024
+        )
+
+        self.assertIsInstance(summary, AnnualRevenueSummaryResponse)
+        expected_total = 10000.0 + 25750.3 + 3500.5
+        self.assertAlmostEqual(summary.faturamento_total, round(expected_total, 2))
+        self.assertIn("Faturamento Anual", summary.destaque)
+        self.assertIn("NOTA_FISCAL_EMITIDA", summary.detalhamento)
+        self.assertIn("INFORME_RENDIMENTOS", summary.detalhamento)
+        self.assertIn("LUCRO_TRIBUTAVEL_DASN", summary.detalhamento)
+        informe_breakdown = summary.detalhamento["INFORME_RENDIMENTOS"]
+        self.assertEqual(informe_breakdown.quantidade_documentos, 1)
+        self.assertIn(informe_operacional.id, informe_breakdown.documentos)
+        self.assertIn(
+            self.doc_service._BREAKDOWN_LABELS["LUCRO_TRIBUTAVEL_DASN"],
+            summary.documentos_considerados,
+        )
+        self.assertTrue(summary.observacoes)
 
 
 if __name__ == "__main__":
