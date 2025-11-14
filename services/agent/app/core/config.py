@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     mongo_collection_documents: str = "documents"
     rag_top_k: int = 5
     embedding_dimensions: int = 384
+    billing_service_url: str = "http://billing:8000"
+    billing_timeout_seconds: float = 5.0
 
     class Config:
         env_file = ".env"

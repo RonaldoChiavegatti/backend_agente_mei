@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from typing import List, Tuple
+import logging
+import threading
+from datetime import datetime, timezone
+from typing import Callable, List, Optional, Tuple
 from uuid import UUID
 
+from app.services.billing_client import BillingClient
 from app.services.corrections import CorrectionCommand, CorrectionParser
 from app.services.embeddings import LocalEmbeddingClient
 from app.services.financial_summary import (
@@ -19,6 +23,9 @@ from app.services.repositories import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 class AgentChatService:
     """Coordinate retrieval, aggregation and response composition."""
 
@@ -30,6 +37,8 @@ class AgentChatService:
         mongo_repository: MongoDocumentRepository | None = None,
         top_k: int = 5,
         correction_parser: CorrectionParser | None = None,
+        billing_client: BillingClient | None = None,
+        billing_dispatcher: Callable[[Callable[[], None]], None] | None = None,
     ) -> None:
         self._rag_repository = rag_repository
         self._summary_builder = summary_builder
@@ -38,6 +47,10 @@ class AgentChatService:
         self._top_k = top_k
         self._correction_parser = correction_parser or (
             CorrectionParser() if mongo_repository is not None else None
+        )
+        self._billing_client = billing_client
+        self._billing_dispatcher = (
+            billing_dispatcher if billing_dispatcher is not None else self._spawn_billing_task
         )
 
     def answer_question(self, user_id: UUID, question: str) -> Tuple[str, dict]:
@@ -48,7 +61,18 @@ class AgentChatService:
                     user_id=user_id, question=question, command=command
                 )
                 if correction_response is not None:
-                    return correction_response
+                    answer, debug_payload = correction_response
+                    self._register_usage(
+                        user_id=user_id,
+                        question=question,
+                        answer=answer,
+                        summary=None,
+                        chunks=[],
+                        operation_hint=self._operation_hint_from_correction(
+                            command
+                        ),
+                    )
+                    return answer, debug_payload
 
         summary = self._summary_builder.build_summary(user_id)
         query_embedding = self._embedder.embed_query(question)
@@ -88,6 +112,13 @@ class AgentChatService:
             "financial_summary": summary.to_dict(),
             "chunks": [chunk.to_dict() for chunk in chunks],
         }
+        self._register_usage(
+            user_id=user_id,
+            question=question,
+            answer=answer,
+            summary=summary,
+            chunks=chunks,
+        )
         return answer, debug_payload
 
     def _handle_correction(
@@ -236,3 +267,111 @@ class AgentChatService:
             f"{context_text}\n\n"
             f"Recomendação: {guidance}"
         )
+
+    def _register_usage(
+        self,
+        *,
+        user_id: UUID,
+        question: str,
+        answer: str,
+        summary: Optional[FinancialSummary],
+        chunks: List[RagChunk],
+        operation_hint: Optional[str] = None,
+    ) -> None:
+        if self._billing_client is None:
+            return
+
+        def _task() -> None:
+            try:
+                tokens = self._estimate_token_usage(question, answer)
+                operation_type = operation_hint or self._describe_operation(
+                    summary, chunks
+                )
+                self._billing_client.log_chat_usage(
+                    user_id=user_id,
+                    tokens=tokens,
+                    operation_type=operation_type,
+                    occurred_at=datetime.now(timezone.utc),
+                )
+            except Exception as exc:  # pragma: no cover - logging path
+                logger.warning(
+                    "Failed to register billing usage: %s", exc, exc_info=True
+                )
+
+        try:
+            self._billing_dispatcher(_task)
+        except Exception as exc:  # pragma: no cover - defensive guard
+            logger.warning(
+                "Failed to schedule billing usage logging: %s", exc, exc_info=True
+            )
+
+    def _estimate_token_usage(self, question: str, answer: str) -> int:
+        total_characters = len(question) + len(answer)
+        estimated = max(1, total_characters // 4)
+        return estimated
+
+    def _describe_operation(
+        self,
+        summary: Optional[FinancialSummary],
+        chunks: List[RagChunk],
+    ) -> str:
+        labels: set[str] = set()
+
+        if summary is not None:
+            labels.update(
+                self._humanize_label(name)
+                for name in summary.revenues.breakdown.keys()
+            )
+            labels.update(
+                self._humanize_label(name)
+                for name in summary.expenses.breakdown.keys()
+            )
+            if summary.mei_info:
+                labels.add(self._humanize_label("DASN_SIMEI"))
+
+        for chunk in chunks:
+            metadata = getattr(chunk, "metadata", None) or {}
+            document_type = metadata.get("document_type")
+            if document_type:
+                labels.add(self._humanize_label(str(document_type)))
+
+        if not labels:
+            return "consulta MEI"
+
+        sorted_labels = sorted(labels)
+        if len(sorted_labels) == 1:
+            return f"consulta MEI com base em {sorted_labels[0]}"
+
+        return (
+            "consulta MEI com base em "
+            + ", ".join(sorted_labels[:-1])
+            + f" e {sorted_labels[-1]}"
+        )
+
+    def _operation_hint_from_correction(self, command: CorrectionCommand) -> str:
+        document_label = self._humanize_label(command.document_type)
+        return f"correção de {document_label}"
+
+    def _humanize_label(self, raw_label: str) -> str:
+        if not raw_label:
+            return "documento"
+
+        normalized = raw_label.strip()
+        upper = normalized.upper()
+        if upper == "DASN_SIMEI":
+            return "DASN-SIMEI"
+        if upper == "MEI":
+            return "MEI"
+
+        normalized = normalized.replace("_", " ").replace("-", " ")
+        words = [word for word in normalized.split() if word]
+        if not words:
+            return "documento"
+
+        capitalized = " ".join(word.capitalize() for word in words)
+        return capitalized
+
+    @staticmethod
+    def _spawn_billing_task(task: Callable[[], None]) -> None:
+        thread = threading.Thread(target=task, name="billing-logger", daemon=True)
+        thread.start()

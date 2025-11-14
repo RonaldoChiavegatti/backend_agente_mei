@@ -6,6 +6,7 @@ import pathlib
 import sys
 import unittest
 import uuid
+from datetime import datetime
 
 TEST_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(TEST_ROOT) not in sys.path:
@@ -89,6 +90,28 @@ class _CorrectionMongoRepository:
             )
             return result
         return None
+
+
+class _StubBillingClient:
+    def __init__(self):
+        self.calls = []
+
+    def log_chat_usage(
+        self,
+        *,
+        user_id,
+        tokens,
+        operation_type,
+        occurred_at=None,
+    ):
+        self.calls.append(
+            {
+                "user_id": user_id,
+                "tokens": tokens,
+                "operation_type": operation_type,
+                "occurred_at": occurred_at,
+            }
+        )
 
 
 class AgentChatServiceTestCase(unittest.TestCase):
@@ -262,6 +285,94 @@ class AgentChatServiceTestCase(unittest.TestCase):
             mongo_repo.documents["NOTA_FISCAL_RECEBIDA"]["data"]["categoria"],
             "saúde",
         )
+
+    def test_logs_usage_transaction_with_billing_client(self):
+        summary = FinancialSummary(
+            revenues=SummaryBucket(
+                total=2500.0,
+                breakdown={
+                    "NOTA_FISCAL_EMITIDA": 1500.0,
+                    "INFORME_RENDIMENTOS": 1000.0,
+                },
+            ),
+            expenses=SummaryBucket(total=0.0, breakdown={}),
+            mei_info={"lucro_isento": 5000.0},
+        )
+
+        rag_repo = _StubRagRepository(
+            [
+                RagChunk(
+                    id="1",
+                    source="user_rag_chunks",
+                    source_id="chunk-1",
+                    content="Resumo da nota fiscal emitida em janeiro",
+                    score=0.9,
+                    metadata={"document_type": "NOTA_FISCAL_EMITIDA"},
+                )
+            ]
+        )
+        summary_builder = _StubSummaryBuilder(summary)
+        mongo_repo = _StubMongoRepository([])
+        billing_client = _StubBillingClient()
+
+        service = AgentChatService(
+            rag_repository=rag_repo,
+            summary_builder=summary_builder,
+            embedder=self.embedder,
+            mongo_repository=mongo_repo,
+            top_k=3,
+            billing_client=billing_client,
+            billing_dispatcher=lambda task: task(),
+        )
+
+        answer, _ = service.answer_question(
+            self.user_id, "Como está minha situação fiscal?"
+        )
+
+        self.assertTrue(answer)
+        self.assertEqual(len(billing_client.calls), 1)
+        call = billing_client.calls[0]
+        self.assertEqual(call["user_id"], self.user_id)
+        self.assertGreater(call["tokens"], 0)
+        self.assertTrue(call["operation_type"].startswith("consulta MEI"))
+        self.assertIsInstance(call["occurred_at"], datetime)
+
+    def test_billing_failure_does_not_block_answer(self):
+        summary = FinancialSummary(
+            revenues=SummaryBucket(total=0.0, breakdown={}),
+            expenses=SummaryBucket(total=0.0, breakdown={}),
+            mei_info={},
+        )
+        rag_repo = _StubRagRepository([])
+        summary_builder = _StubSummaryBuilder(summary)
+        mongo_repo = _StubMongoRepository([])
+
+        class _FailingBillingClient:
+            def __init__(self):
+                self.calls = 0
+
+            def log_chat_usage(self, **kwargs):  # pragma: no cover - exception path
+                self.calls += 1
+                raise RuntimeError("billing unavailable")
+
+        billing_client = _FailingBillingClient()
+
+        service = AgentChatService(
+            rag_repository=rag_repo,
+            summary_builder=summary_builder,
+            embedder=self.embedder,
+            mongo_repository=mongo_repo,
+            top_k=1,
+            billing_client=billing_client,
+            billing_dispatcher=lambda task: task(),
+        )
+
+        answer, debug = service.answer_question(self.user_id, "Qual o resumo?")
+
+        self.assertTrue(answer)
+        self.assertIn("Pergunta original", answer)
+        self.assertIn("question", debug)
+        self.assertEqual(billing_client.calls, 1)
 
 
 if __name__ == "__main__":  # pragma: no cover
