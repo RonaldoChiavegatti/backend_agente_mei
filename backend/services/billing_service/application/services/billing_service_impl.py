@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import List
+from typing import List, Tuple
 
 from services.billing_service.application.domain.transaction import (
     Transaction,
@@ -15,9 +15,8 @@ from services.billing_service.application.ports.output.billing_repository import
 )
 from shared.models.base_models import (
     Transaction as TransactionResponse,
-)
-from shared.models.base_models import (
     UserBalance as UserBalanceResponse,
+    TokenUsageSummary as TokenUsageSummaryResponse,
 )
 
 
@@ -63,3 +62,32 @@ class BillingServiceImpl(BillingService):
             TransactionResponse.model_validate(tx, from_attributes=True)
             for tx in transactions
         ]
+
+    def get_user_monthly_usage(
+        self, user_id: uuid.UUID
+    ) -> TokenUsageSummaryResponse:
+        start_date, end_date = self._get_current_month_range()
+        usage = self.billing_repository.get_user_usage_in_period(
+            user_id=user_id, start_date=start_date, end_date=end_date
+        )
+        return TokenUsageSummaryResponse.model_validate(
+            usage, from_attributes=True
+        )
+
+    def _get_current_month_range(self) -> Tuple[datetime, datetime]:
+        """Returns the datetime range covering the current month."""
+        now = datetime.utcnow()
+        start_of_month = now.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+
+        if start_of_month.month == 12:
+            start_next_month = start_of_month.replace(
+                year=start_of_month.year + 1, month=1
+            )
+        else:
+            start_next_month = start_of_month.replace(
+                month=start_of_month.month + 1
+            )
+
+        return start_of_month, start_next_month

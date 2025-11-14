@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from shared.models.base_models import (
     UserBalance as UserBalanceResponse,
     Transaction as TransactionResponse,
+    TokenUsageSummary as TokenUsageSummaryResponse,
 )
 from services.billing_service.application.ports.input.billing_service import (
     BillingService,
@@ -61,3 +62,13 @@ def get_transactions_endpoint(
         return transactions
     except UserNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.get(
+    "/monthly-usage/{user_id}", response_model=TokenUsageSummaryResponse
+)
+def get_monthly_usage_endpoint(
+    user_id: uuid.UUID, service: BillingService = Depends(get_billing_service)
+):
+    usage = service.get_user_monthly_usage(user_id=user_id)
+    return usage

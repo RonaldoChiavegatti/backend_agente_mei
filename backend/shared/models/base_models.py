@@ -138,6 +138,16 @@ class Transaction(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TokenUsageSummary(BaseModel):
+    user_id: uuid.UUID
+    tokens_consumed: int
+    consultations_count: int
+    start_date: datetime
+    end_date: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # =============================================================================
 # Generic API Responses
 # =============================================================================
