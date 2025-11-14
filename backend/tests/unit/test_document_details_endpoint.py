@@ -107,6 +107,9 @@ from services.document_service.application.dto.annual_revenue_summary import (  
     AnnualRevenueSummaryResponse,
     AnnualRevenueSourceBreakdown,
 )
+from services.document_service.application.dto.monthly_revenue_summary import (  # noqa: E402
+    MonthlyRevenueSummaryResponse,
+)
 from services.document_service.application.domain.document_job import (  # noqa: E402
     DocumentType,
     ProcessingStatus,
@@ -123,10 +126,12 @@ class FakeDocumentService:
         self,
         details: DocumentDetailsResponse | None = None,
         annual_summary: AnnualRevenueSummaryResponse | None = None,
+        monthly_summary: MonthlyRevenueSummaryResponse | None = None,
         error: Exception | None = None,
     ):
         self.details = details
         self.annual_summary = annual_summary
+        self.monthly_summary = monthly_summary
         self.error = error
 
     def start_document_processing(self, *args, **kwargs):  # pragma: no cover - helper stub
@@ -151,6 +156,14 @@ class FakeDocumentService:
             raise self.error
         assert self.annual_summary is not None
         return self.annual_summary
+
+    def get_monthly_revenue_summary(
+        self, user_id: uuid.UUID, year: int | None = None, month: int | None = None
+    ) -> MonthlyRevenueSummaryResponse:
+        if self.error:
+            raise self.error
+        assert self.monthly_summary is not None
+        return self.monthly_summary
 
 
 class TestDocumentDetailsEndpoint(unittest.TestCase):
@@ -256,6 +269,55 @@ class TestDocumentDetailsEndpoint(unittest.TestCase):
         with self.assertRaises(HTTPException) as ctx:
             api.get_annual_revenue_summary_endpoint(
                 year=None,
+                user_id=self.user_id,
+                doc_service=service,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 500)
+        self.assertEqual(ctx.exception.detail, "boom")
+
+    def test_get_monthly_revenue_summary_endpoint(self):
+        breakdown = AnnualRevenueSourceBreakdown(
+            document_type="NOTA_FISCAL_EMITIDA",
+            label="Notas fiscais emitidas",
+            total=4500.0,
+            total_formatado="R$ 4.500,00",
+            documentos=[uuid.uuid4()],
+            quantidade_documentos=2,
+        )
+        summary = MonthlyRevenueSummaryResponse(
+            mes=1,
+            ano=2024,
+            faturamento_total=4500.0,
+            faturamento_total_formatado="R$ 4.500,00",
+            limite_mensal=6750.0,
+            limite_mensal_formatado="R$ 6.750,00",
+            destaque="Faturamento Mensal (01/2024): R$ 4.500,00 / R$ 6.750,00",
+            detalhamento={"NOTA_FISCAL_EMITIDA": breakdown},
+            observacoes=["note"],
+            documentos_considerados=["Notas fiscais emitidas"],
+        )
+
+        service = FakeDocumentService(monthly_summary=summary)
+
+        result = api.get_monthly_revenue_summary_endpoint(
+            year=2024,
+            month=1,
+            user_id=self.user_id,
+            doc_service=service,
+        )
+
+        self.assertEqual(result.mes, 1)
+        self.assertIn("Faturamento Mensal", result.destaque)
+        self.assertIn("NOTA_FISCAL_EMITIDA", result.detalhamento)
+
+    def test_get_monthly_revenue_summary_endpoint_handles_error(self):
+        service = FakeDocumentService(error=RuntimeError("boom"))
+
+        with self.assertRaises(HTTPException) as ctx:
+            api.get_monthly_revenue_summary_endpoint(
+                year=2024,
+                month=1,
                 user_id=self.user_id,
                 doc_service=service,
             )

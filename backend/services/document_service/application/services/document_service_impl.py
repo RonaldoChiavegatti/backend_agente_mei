@@ -36,6 +36,9 @@ from services.document_service.application.dto.annual_revenue_summary import (
     AnnualRevenueSummaryResponse,
     AnnualRevenueSourceBreakdown,
 )
+from services.document_service.application.dto.monthly_revenue_summary import (
+    MonthlyRevenueSummaryResponse,
+)
 
 
 class DocumentServiceImpl(DocumentService):
@@ -44,6 +47,7 @@ class DocumentServiceImpl(DocumentService):
     """
 
     _ANNUAL_LIMIT = 81000.0
+    _MONTHLY_LIMIT = 6750.0
     _BREAKDOWN_LABELS: Dict[str, str] = {
         DocumentType.NOTA_FISCAL_EMITIDA.value: "Notas fiscais emitidas",
         DocumentType.INFORME_RENDIMENTOS.value: "Informes de rendimentos (receita operacional MEI)",
@@ -276,6 +280,129 @@ class DocumentServiceImpl(DocumentService):
             documentos_considerados=sorted(considered_labels),
         )
 
+    def get_monthly_revenue_summary(
+        self,
+        user_id: uuid.UUID,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+    ) -> MonthlyRevenueSummaryResponse:
+        now = datetime.utcnow()
+        target_year = year or now.year
+        target_month = month or now.month
+        if not 1 <= target_month <= 12:
+            raise ValueError("Mês informado é inválido. Use valores entre 1 e 12.")
+
+        jobs = self.job_repository.get_by_user_id(user_id=user_id)
+
+        breakdown_data: Dict[str, Dict[str, Any]] = defaultdict(
+            lambda: {"label": "", "total": 0.0, "documents": []}
+        )
+        total_revenue = 0.0
+        considered_labels: set[str] = set()
+
+        for job in jobs:
+            if job.status != ProcessingStatus.COMPLETED:
+                continue
+
+            details = build_document_details(job)
+            document_date = self._resolve_month_and_year(details, job)
+            if not document_date:
+                continue
+
+            document_year, document_month = document_date
+            if document_year != target_year or document_month != target_month:
+                continue
+
+            if job.document_type == DocumentType.NOTA_FISCAL_EMITIDA:
+                amount = details.valor
+                if amount is None:
+                    continue
+                total_revenue += amount
+                self._register_breakdown(
+                    breakdown_data,
+                    DocumentType.NOTA_FISCAL_EMITIDA.value,
+                    amount,
+                    job.id,
+                )
+                considered_labels.add(
+                    self._BREAKDOWN_LABELS[DocumentType.NOTA_FISCAL_EMITIDA.value]
+                )
+                continue
+
+            if job.document_type == DocumentType.INFORME_RENDIMENTOS:
+                if not self._is_operational_revenue(job, details):
+                    continue
+                amount = details.valor
+                if amount is None:
+                    continue
+                total_revenue += amount
+                self._register_breakdown(
+                    breakdown_data,
+                    DocumentType.INFORME_RENDIMENTOS.value,
+                    amount,
+                    job.id,
+                )
+                considered_labels.add(
+                    self._BREAKDOWN_LABELS[DocumentType.INFORME_RENDIMENTOS.value]
+                )
+                continue
+
+            if job.document_type == DocumentType.DASN_SIMEI:
+                amount = self._extract_lucro_tributavel(details, job)
+                if amount is None:
+                    continue
+                total_revenue += amount
+                self._register_breakdown(
+                    breakdown_data,
+                    "LUCRO_TRIBUTAVEL_DASN",
+                    amount,
+                    job.id,
+                )
+                considered_labels.add(self._BREAKDOWN_LABELS["LUCRO_TRIBUTAVEL_DASN"])
+
+        breakdown_models: Dict[str, AnnualRevenueSourceBreakdown] = {}
+        for key, payload in breakdown_data.items():
+            if payload["total"] <= 0:
+                continue
+            label = payload["label"] or self._BREAKDOWN_LABELS.get(key, key)
+            documents = payload["documents"]
+            breakdown_models[key] = AnnualRevenueSourceBreakdown(
+                document_type=key,
+                label=label,
+                total=round(payload["total"], 2),
+                total_formatado=self._format_currency(payload["total"]),
+                documentos=documents,
+                quantidade_documentos=len(documents),
+            )
+
+        total_revenue = round(total_revenue, 2)
+        total_formatted = self._format_currency(total_revenue)
+        limit_formatted = self._format_currency(self._MONTHLY_LIMIT)
+        month_label = f"{target_month:02d}/{target_year}"
+        highlight = (
+            f"Faturamento Mensal ({month_label}): {total_formatted} / {limit_formatted}"
+        )
+
+        notes = [
+            (
+                "É possível ultrapassar o limite mensal desde que o faturamento anual "
+                "permaneça dentro do teto de R$ 81.000,00."
+            )
+        ]
+
+        return MonthlyRevenueSummaryResponse(
+            mes=target_month,
+            ano=target_year,
+            faturamento_total=total_revenue,
+            faturamento_total_formatado=total_formatted,
+            limite_mensal=self._MONTHLY_LIMIT,
+            limite_mensal_formatado=limit_formatted,
+            destaque=highlight,
+            detalhamento=breakdown_models,
+            observacoes=notes,
+            documentos_considerados=sorted(considered_labels),
+        )
+
     def _register_breakdown(
         self,
         registry: Dict[str, Dict[str, Any]],
@@ -314,6 +441,39 @@ class DocumentServiceImpl(DocumentService):
 
         if job.created_at:
             return job.created_at.year
+
+        return None
+
+    def _resolve_month_and_year(
+        self, details: DocumentDetailsResponse, job: DocumentJob
+    ) -> Optional[tuple[int, int]]:
+        if details.data:
+            parsed = self._parse_date_string(details.data)
+            if parsed:
+                return parsed.year, parsed.month
+
+        extras = details.extras or {}
+        for key in (
+            "competencia",
+            "periodo_competencia",
+            "periodo-referencia",
+            "periodo_referencia",
+            "mes_referencia",
+        ):
+            entry = extras.get(key)
+            if isinstance(entry, dict):
+                for field in ("valor", "valor_formatado"):
+                    month_year = self._parse_month_year_from_text(entry.get(field))
+                    if month_year:
+                        return month_year
+
+        if details.raw_extracted_data:
+            month_year = self._extract_month_year_from_payload(details.raw_extracted_data)
+            if month_year:
+                return month_year
+
+        if job.created_at:
+            return job.created_at.year, job.created_at.month
 
         return None
 
@@ -426,6 +586,122 @@ class DocumentServiceImpl(DocumentService):
                 if year is not None:
                     return year
         return None
+
+    def _parse_date_string(self, value: Any) -> Optional[datetime]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return None
+            try:
+                return datetime.fromisoformat(normalized)
+            except ValueError:
+                pass
+
+            for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d", "%Y-%m-%d"):
+                try:
+                    return datetime.strptime(normalized, fmt)
+                except ValueError:
+                    continue
+
+            month_year = self._parse_month_year_from_text(normalized)
+            if month_year:
+                year, month = month_year
+                try:
+                    return datetime(year, month, 1)
+                except ValueError:
+                    return None
+        return None
+
+    def _parse_month_year_from_text(self, value: Any) -> Optional[tuple[int, int]]:
+        if value is None:
+            return None
+        if isinstance(value, (tuple, list)) and len(value) >= 2:
+            year = self._extract_year_from_text(value)
+            if isinstance(year, int):
+                for item in value:
+                    if isinstance(item, int) and 1 <= item <= 12:
+                        return year, item
+            return None
+
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return None
+
+            numeric_match = re.search(r"(20\d{2}|19\d{2})[\/-](\d{1,2})", normalized)
+            if numeric_match:
+                year = int(numeric_match.group(1))
+                month = int(numeric_match.group(2))
+                if 1 <= month <= 12:
+                    return year, month
+
+            inverted_match = re.search(r"(\d{1,2})[\/-](20\d{2}|19\d{2})", normalized)
+            if inverted_match:
+                month = int(inverted_match.group(1))
+                year = int(inverted_match.group(2))
+                if 1 <= month <= 12:
+                    return year, month
+
+            month_map = self._month_name_map()
+            lowered = normalized.lower()
+            for name, month in month_map.items():
+                if name in lowered:
+                    year = self._extract_year_from_text(normalized)
+                    if year is not None and 1 <= month <= 12:
+                        return year, month
+
+        if isinstance(value, dict):
+            for nested in value.values():
+                month_year = self._parse_month_year_from_text(nested)
+                if month_year:
+                    return month_year
+
+        return None
+
+    def _extract_month_year_from_payload(self, payload: Any) -> Optional[tuple[int, int]]:
+        if isinstance(payload, dict):
+            for key, value in payload.items():
+                normalized_key = str(key).lower().replace(" ", "_")
+                if any(
+                    fragment in normalized_key
+                    for fragment in ("data", "competencia", "periodo", "referencia", "mes")
+                ):
+                    month_year = self._parse_month_year_from_text(value)
+                    if month_year:
+                        return month_year
+                month_year = self._extract_month_year_from_payload(value)
+                if month_year:
+                    return month_year
+        elif isinstance(payload, (list, tuple, set)):
+            for item in payload:
+                month_year = self._extract_month_year_from_payload(item)
+                if month_year:
+                    return month_year
+        elif isinstance(payload, str):
+            return self._parse_month_year_from_text(payload)
+        return None
+
+    @staticmethod
+    def _month_name_map() -> Dict[str, int]:
+        return {
+            "janeiro": 1,
+            "fevereiro": 2,
+            "marco": 3,
+            "março": 3,
+            "abril": 4,
+            "maio": 5,
+            "junho": 6,
+            "julho": 7,
+            "agosto": 8,
+            "setembro": 9,
+            "outubro": 10,
+            "novembro": 11,
+            "dezembro": 12,
+        }
 
     @staticmethod
     def _parse_float(value: Any) -> Optional[float]:

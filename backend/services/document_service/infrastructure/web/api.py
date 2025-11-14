@@ -26,6 +26,9 @@ from services.document_service.application.dto.document_details import (
 from services.document_service.application.dto.annual_revenue_summary import (
     AnnualRevenueSummaryResponse,
 )
+from services.document_service.application.dto.monthly_revenue_summary import (
+    MonthlyRevenueSummaryResponse,
+)
 from services.document_service.application.dto.extracted_data_update import (
     ExtractedDataUpdateRequest,
 )
@@ -138,6 +141,42 @@ def get_annual_revenue_summary_endpoint(
 ):
     try:
         return doc_service.get_annual_revenue_summary(user_id=user_id, year=year)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+@router.get(
+    "/dashboard/monthly-revenue",
+    response_model=MonthlyRevenueSummaryResponse,
+)
+def get_monthly_revenue_summary_endpoint(
+    year: Optional[int] = Query(
+        default=None,
+        ge=2000,
+        le=2100,
+        description="Ano considerado para o faturamento mensal.",
+    ),
+    month: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=12,
+        description="Mês considerado para o faturamento mensal.",
+    ),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    doc_service: DocumentService = Depends(get_document_service),
+):
+    try:
+        return doc_service.get_monthly_revenue_summary(
+            user_id=user_id, year=year, month=month
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

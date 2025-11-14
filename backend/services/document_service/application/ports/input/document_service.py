@@ -7,6 +7,9 @@ from services.document_service.application.domain.document_job import DocumentTy
 from services.document_service.application.dto.annual_revenue_summary import (
     AnnualRevenueSummaryResponse,
 )
+from services.document_service.application.dto.monthly_revenue_summary import (
+    MonthlyRevenueSummaryResponse,
+)
 from services.document_service.application.dto.document_details import (
     DocumentDetailsResponse,
 )
@@ -65,4 +68,11 @@ class DocumentService(ABC):
         self, user_id: uuid.UUID, year: Optional[int] = None
     ) -> AnnualRevenueSummaryResponse:
         """Aggregate the MEI annual revenue for dashboard consumption."""
+        pass
+
+    @abstractmethod
+    def get_monthly_revenue_summary(
+        self, user_id: uuid.UUID, year: Optional[int] = None, month: Optional[int] = None
+    ) -> MonthlyRevenueSummaryResponse:
+        """Aggregate the MEI monthly revenue for dashboard consumption."""
         pass

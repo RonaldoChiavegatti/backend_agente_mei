@@ -119,6 +119,9 @@ from services.document_service.application.dto.document_details import (
 from services.document_service.application.dto.annual_revenue_summary import (
     AnnualRevenueSummaryResponse,
 )
+from services.document_service.application.dto.monthly_revenue_summary import (
+    MonthlyRevenueSummaryResponse,
+)
 
 
 class TestDocumentService(unittest.TestCase):
@@ -457,6 +460,82 @@ class TestDocumentService(unittest.TestCase):
             summary.documentos_considerados,
         )
         self.assertTrue(summary.observacoes)
+
+    def test_get_monthly_revenue_summary(self):
+        nf_january = DocumentJob(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            file_path="/tmp/nf_jan.pdf",
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data={"valor": 2000.0, "data": "2024-01-10"},
+            created_at=datetime(2024, 1, 15),
+        )
+
+        informe_january = DocumentJob(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            file_path="/tmp/informe_jan.pdf",
+            document_type=DocumentType.INFORME_RENDIMENTOS,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data={
+                "valor": "3.500,00",
+                "receita_operacional_mei": True,
+                "data": "2024-01-20",
+            },
+            created_at=datetime(2024, 1, 25),
+        )
+
+        dasn_january = DocumentJob(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            file_path="/tmp/dasn_jan.pdf",
+            document_type=DocumentType.DASN_SIMEI,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data={
+                "lucro_tributavel": "1.250,00",
+                "competencia": "01/2024",
+            },
+            created_at=datetime(2024, 1, 30),
+        )
+
+        nf_february = DocumentJob(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            file_path="/tmp/nf_fev.pdf",
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data={"valor": 1000.0, "data": "2024-02-05"},
+            created_at=datetime(2024, 2, 10),
+        )
+
+        self.mock_job_repo.get_by_user_id.return_value = [
+            nf_january,
+            informe_january,
+            dasn_january,
+            nf_february,
+        ]
+
+        summary = self.doc_service.get_monthly_revenue_summary(
+            user_id=self.user_id, year=2024, month=1
+        )
+
+        self.assertIsInstance(summary, MonthlyRevenueSummaryResponse)
+        expected_total = 2000.0 + 3500.0 + 1250.0
+        self.assertAlmostEqual(summary.faturamento_total, round(expected_total, 2))
+        self.assertEqual(summary.mes, 1)
+        self.assertEqual(summary.ano, 2024)
+        self.assertEqual(
+            summary.destaque,
+            "Faturamento Mensal (01/2024): R$ 6.750,00 / R$ 6.750,00",
+        )
+        self.assertIn("NOTA_FISCAL_EMITIDA", summary.detalhamento)
+        self.assertIn("INFORME_RENDIMENTOS", summary.detalhamento)
+        self.assertIn("LUCRO_TRIBUTAVEL_DASN", summary.detalhamento)
+        self.assertTrue(summary.observacoes)
+        self.assertIn(
+            "Notas fiscais emitidas", summary.documentos_considerados
+        )
 
 
 if __name__ == "__main__":
