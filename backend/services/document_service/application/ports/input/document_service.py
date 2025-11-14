@@ -13,6 +13,9 @@ from services.document_service.application.dto.monthly_revenue_summary import (
 from services.document_service.application.dto.document_details import (
     DocumentDetailsResponse,
 )
+from services.document_service.application.dto.dashboard_basic_metrics import (
+    DashboardBasicMetricsResponse,
+)
 
 
 class DocumentService(ABC):
@@ -75,4 +78,11 @@ class DocumentService(ABC):
         self, user_id: uuid.UUID, year: Optional[int] = None, month: Optional[int] = None
     ) -> MonthlyRevenueSummaryResponse:
         """Aggregate the MEI monthly revenue for dashboard consumption."""
+        pass
+
+    @abstractmethod
+    def get_basic_dashboard_metrics(
+        self, user_id: uuid.UUID
+    ) -> DashboardBasicMetricsResponse:
+        """Return the basic counters displayed in the dashboard overview."""
         pass

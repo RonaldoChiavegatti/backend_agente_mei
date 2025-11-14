@@ -29,6 +29,9 @@ from services.document_service.application.dto.annual_revenue_summary import (
 from services.document_service.application.dto.monthly_revenue_summary import (
     MonthlyRevenueSummaryResponse,
 )
+from services.document_service.application.dto.dashboard_basic_metrics import (
+    DashboardBasicMetricsResponse,
+)
 from services.document_service.application.dto.extracted_data_update import (
     ExtractedDataUpdateRequest,
 )
@@ -177,6 +180,23 @@ def get_monthly_revenue_summary_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+
+
+@router.get(
+    "/dashboard/basic-metrics",
+    response_model=DashboardBasicMetricsResponse,
+)
+def get_basic_dashboard_metrics_endpoint(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    doc_service: DocumentService = Depends(get_document_service),
+):
+    try:
+        return doc_service.get_basic_dashboard_metrics(user_id=user_id)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

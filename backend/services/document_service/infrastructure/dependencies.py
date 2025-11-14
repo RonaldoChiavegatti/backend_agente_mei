@@ -18,6 +18,9 @@ from services.document_service.infrastructure.adapters.queue.redis_message_queue
     RedisMessageQueue,
 )
 from services.document_service.infrastructure.config import settings
+from services.billing_service.infrastructure.adapters.persistence.postgres_billing_repository import (
+    PostgresBillingRepository,
+)
 
 
 def get_document_service(db: Session = Depends(get_db)) -> DocumentService:
@@ -35,9 +38,12 @@ def get_document_service(db: Session = Depends(get_db)) -> DocumentService:
 
     message_queue = RedisMessageQueue(redis_url=settings.REDIS_URL)
 
+    billing_repo = PostgresBillingRepository(db)
+
     return DocumentServiceImpl(
         job_repository=job_repo,
         file_storage=file_storage,
         message_queue=message_queue,
         ocr_queue_name=settings.OCR_QUEUE_NAME,
+        billing_repository=billing_repo,
     )

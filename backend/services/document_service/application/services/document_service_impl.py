@@ -3,7 +3,7 @@ import re
 import uuid
 from collections import defaultdict
 from datetime import datetime
-from typing import IO, Dict, Any, List, Optional, Literal
+from typing import IO, Dict, Any, List, Optional, Literal, Set
 
 from services.document_service.application.domain.document_job import (
     DocumentJob,
@@ -25,6 +25,9 @@ from services.document_service.application.ports.output.file_storage import File
 from services.document_service.application.ports.output.message_queue import (
     MessageQueue,
 )
+from services.billing_service.application.ports.output.billing_repository import (
+    BillingRepository,
+)
 from services.document_service.application.services.document_details_formatter import (
     build_document_details,
 )
@@ -39,6 +42,10 @@ from services.document_service.application.dto.annual_revenue_summary import (
 )
 from services.document_service.application.dto.monthly_revenue_summary import (
     MonthlyRevenueSummaryResponse,
+)
+from services.document_service.application.dto.dashboard_basic_metrics import (
+    DashboardBasicMetricsResponse,
+    DashboardCounter,
 )
 
 
@@ -66,11 +73,13 @@ class DocumentServiceImpl(DocumentService):
         file_storage: FileStorage,
         message_queue: MessageQueue,
         ocr_queue_name: str = "ocr_jobs",
+        billing_repository: Optional[BillingRepository] = None,
     ):
         self.job_repository = job_repository
         self.file_storage = file_storage
         self.message_queue = message_queue
         self.ocr_queue_name = ocr_queue_name
+        self.billing_repository = billing_repository
 
     def start_document_processing(
         self,
@@ -399,6 +408,125 @@ class DocumentServiceImpl(DocumentService):
             observacoes=notes,
             documentos_considerados=sorted(considered_labels),
         )
+
+    def get_basic_dashboard_metrics(
+        self, user_id: uuid.UUID
+    ) -> DashboardBasicMetricsResponse:
+        now = datetime.utcnow()
+        current_year = now.year
+        current_month = now.month
+
+        jobs = self.job_repository.get_by_user_id(user_id=user_id)
+
+        invoices_types: Set[DocumentType] = {
+            DocumentType.NOTA_FISCAL_EMITIDA,
+            DocumentType.NOTA_FISCAL_RECEBIDA,
+        }
+        issued_invoices = self._count_documents_for_year(
+            jobs, invoices_types, current_year
+        )
+        deductible_expenses = self._count_documents_for_year(
+            jobs, {DocumentType.DESPESA_DEDUTIVEL}, current_year
+        )
+        income_reports = self._count_documents_for_year(
+            jobs, {DocumentType.INFORME_RENDIMENTOS}, current_year
+        )
+
+        agent_consultations = self._count_agent_consultations_current_month(
+            user_id=user_id, reference_date=now
+        )
+
+        counters = [
+            DashboardCounter(
+                key="issued_invoices_current_year",
+                title="Notas fiscais enviadas",
+                subtitle=f"Neste ano ({current_year})",
+                value=issued_invoices,
+            ),
+            DashboardCounter(
+                key="deductible_expenses_current_year",
+                title="Documentos de despesas dedutíveis",
+                subtitle=f"Neste ano ({current_year})",
+                value=deductible_expenses,
+            ),
+            DashboardCounter(
+                key="income_reports_current_year",
+                title="Informes de renda enviados",
+                subtitle=f"Neste ano ({current_year})",
+                value=income_reports,
+            ),
+            DashboardCounter(
+                key="agent_consultations_current_month",
+                title="Consultas ao agente",
+                subtitle=f"Neste mês ({current_month:02d}/{current_year})",
+                value=agent_consultations,
+            ),
+        ]
+
+        return DashboardBasicMetricsResponse(
+            reference_year=current_year,
+            reference_month=current_month,
+            counters=counters,
+        )
+
+    def _count_documents_for_year(
+        self,
+        jobs: List[DocumentJob],
+        document_types: Set[DocumentType],
+        target_year: int,
+    ) -> int:
+        count = 0
+        for job in jobs:
+            if job.document_type not in document_types:
+                continue
+
+            job_created_at = getattr(job, "created_at", None)
+            if job_created_at is None:
+                continue
+
+            if job_created_at.year != target_year:
+                continue
+
+            count += 1
+
+        return count
+
+    def _count_agent_consultations_current_month(
+        self, user_id: uuid.UUID, reference_date: datetime
+    ) -> int:
+        if self.billing_repository is None:
+            return 0
+
+        start_of_month = reference_date.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+
+        if start_of_month.month == 12:
+            start_next_month = start_of_month.replace(
+                year=start_of_month.year + 1, month=1
+            )
+        else:
+            start_next_month = start_of_month.replace(
+                month=start_of_month.month + 1
+            )
+
+        try:
+            usage = self.billing_repository.get_user_usage_in_period(
+                user_id=user_id,
+                start_date=start_of_month,
+                end_date=start_next_month,
+            )
+        except Exception:
+            return 0
+
+        if usage is None:
+            return 0
+
+        consultations = getattr(usage, "consultations_count", 0)
+        try:
+            return max(int(consultations), 0)
+        except (TypeError, ValueError):
+            return 0
 
     def _register_breakdown(
         self,
