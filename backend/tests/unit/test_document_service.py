@@ -122,6 +122,12 @@ from services.document_service.application.dto.annual_revenue_summary import (
 from services.document_service.application.dto.monthly_revenue_summary import (
     MonthlyRevenueSummaryResponse,
 )
+from services.billing_service.application.ports.output.billing_repository import (
+    BillingRepository,
+)
+from services.billing_service.application.domain.usage_summary import (
+    UserMonthlyUsage,
+)
 
 
 class TestDocumentService(unittest.TestCase):
@@ -289,6 +295,86 @@ class TestDocumentService(unittest.TestCase):
                 file_content=file_content,
                 document_type=DocumentType.NOTA_FISCAL_EMITIDA,
             )
+
+    def test_get_basic_dashboard_metrics_counts_documents_and_consultations(self):
+        now = datetime.utcnow()
+        current_year = now.year
+        current_month = now.month
+
+        jobs = [
+            DocumentJob(
+                id=uuid.uuid4(),
+                user_id=self.user_id,
+                file_path="/tmp/nf1.pdf",
+                document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+                created_at=datetime(current_year, 1, 10),
+            ),
+            DocumentJob(
+                id=uuid.uuid4(),
+                user_id=self.user_id,
+                file_path="/tmp/nf2.pdf",
+                document_type=DocumentType.NOTA_FISCAL_RECEBIDA,
+                created_at=datetime(current_year, 2, 15),
+            ),
+            DocumentJob(
+                id=uuid.uuid4(),
+                user_id=self.user_id,
+                file_path="/tmp/despesa.pdf",
+                document_type=DocumentType.DESPESA_DEDUTIVEL,
+                created_at=datetime(current_year, 3, 5),
+            ),
+            DocumentJob(
+                id=uuid.uuid4(),
+                user_id=self.user_id,
+                file_path="/tmp/informe.pdf",
+                document_type=DocumentType.INFORME_RENDIMENTOS,
+                created_at=datetime(current_year, 4, 20),
+            ),
+            DocumentJob(
+                id=uuid.uuid4(),
+                user_id=self.user_id,
+                file_path="/tmp/despesa_antiga.pdf",
+                document_type=DocumentType.DESPESA_DEDUTIVEL,
+                created_at=datetime(current_year - 1, 6, 1),
+            ),
+        ]
+
+        self.mock_job_repo.get_by_user_id.return_value = jobs
+
+        mock_billing_repo = MagicMock(spec=BillingRepository)
+        usage = UserMonthlyUsage(
+            user_id=self.user_id,
+            tokens_consumed=120,
+            consultations_count=7,
+            start_date=datetime(current_year, current_month, 1),
+            end_date=datetime(current_year, current_month, 28),
+        )
+        mock_billing_repo.get_user_usage_in_period.return_value = usage
+
+        service = DocumentServiceImpl(
+            job_repository=self.mock_job_repo,
+            file_storage=self.mock_file_storage,
+            message_queue=self.mock_message_queue,
+            ocr_queue_name="test_ocr_queue",
+            billing_repository=mock_billing_repo,
+        )
+
+        metrics = service.get_basic_dashboard_metrics(user_id=self.user_id)
+
+        self.assertEqual(self.mock_job_repo.get_by_user_id.call_count, 1)
+        job_call = self.mock_job_repo.get_by_user_id.call_args
+        self.assertEqual(job_call.kwargs["user_id"], self.user_id)
+
+        self.assertEqual(mock_billing_repo.get_user_usage_in_period.call_count, 1)
+
+        counters = {counter.key: counter for counter in metrics.counters}
+
+        self.assertEqual(metrics.reference_year, current_year)
+        self.assertEqual(metrics.reference_month, current_month)
+        self.assertEqual(counters["issued_invoices_current_year"].value, 2)
+        self.assertEqual(counters["deductible_expenses_current_year"].value, 1)
+        self.assertEqual(counters["income_reports_current_year"].value, 1)
+        self.assertEqual(counters["agent_consultations_current_month"].value, 7)
 
     def test_get_job_details_success(self):
         extracted_data = {
