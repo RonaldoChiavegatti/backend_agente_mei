@@ -103,6 +103,10 @@ sys.path.insert(0, str(project_root))
 from services.document_service.application.dto.document_details import (  # noqa: E402
     DocumentDetailsResponse,
 )
+from services.document_service.application.dto.annual_revenue_summary import (  # noqa: E402
+    AnnualRevenueSummaryResponse,
+    AnnualRevenueSourceBreakdown,
+)
 from services.document_service.application.domain.document_job import (  # noqa: E402
     DocumentType,
     ProcessingStatus,
@@ -115,8 +119,14 @@ from services.document_service.infrastructure.web import api  # noqa: E402
 
 
 class FakeDocumentService:
-    def __init__(self, details: DocumentDetailsResponse | None = None, error: Exception | None = None):
+    def __init__(
+        self,
+        details: DocumentDetailsResponse | None = None,
+        annual_summary: AnnualRevenueSummaryResponse | None = None,
+        error: Exception | None = None,
+    ):
         self.details = details
+        self.annual_summary = annual_summary
         self.error = error
 
     def start_document_processing(self, *args, **kwargs):  # pragma: no cover - helper stub
@@ -133,6 +143,14 @@ class FakeDocumentService:
             raise self.error
         assert self.details is not None
         return self.details
+
+    def get_annual_revenue_summary(
+        self, user_id: uuid.UUID, year: int | None = None
+    ) -> AnnualRevenueSummaryResponse:
+        if self.error:
+            raise self.error
+        assert self.annual_summary is not None
+        return self.annual_summary
 
 
 class TestDocumentDetailsEndpoint(unittest.TestCase):
@@ -198,7 +216,52 @@ class TestDocumentDetailsEndpoint(unittest.TestCase):
             )
 
         self.assertEqual(ctx.exception.status_code, 403)
-        self.assertEqual(ctx.exception.detail, "nope")
+
+    def test_get_annual_revenue_summary_endpoint(self):
+        breakdown = AnnualRevenueSourceBreakdown(
+            document_type="NOTA_FISCAL_EMITIDA",
+            label="Notas fiscais emitidas",
+            total=15000.0,
+            total_formatado="R$ 15.000,00",
+            documentos=[uuid.uuid4()],
+            quantidade_documentos=1,
+        )
+        summary = AnnualRevenueSummaryResponse(
+            ano=2024,
+            faturamento_total=15000.0,
+            faturamento_total_formatado="R$ 15.000,00",
+            limite_anual=81000.0,
+            limite_anual_formatado="R$ 81.000,00",
+            destaque="Faturamento Anual: R$ 15.000,00 / R$ 81.000,00",
+            detalhamento={"NOTA_FISCAL_EMITIDA": breakdown},
+            observacoes=["note"],
+            documentos_considerados=["Notas fiscais emitidas"],
+        )
+
+        service = FakeDocumentService(annual_summary=summary)
+
+        result = api.get_annual_revenue_summary_endpoint(
+            year=2024,
+            user_id=self.user_id,
+            doc_service=service,
+        )
+
+        self.assertEqual(result.ano, 2024)
+        self.assertIn("Faturamento Anual", result.destaque)
+        self.assertIn("NOTA_FISCAL_EMITIDA", result.detalhamento)
+
+    def test_get_annual_revenue_summary_endpoint_handles_error(self):
+        service = FakeDocumentService(error=RuntimeError("boom"))
+
+        with self.assertRaises(HTTPException) as ctx:
+            api.get_annual_revenue_summary_endpoint(
+                year=None,
+                user_id=self.user_id,
+                doc_service=service,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 500)
+        self.assertEqual(ctx.exception.detail, "boom")
 
 
 if __name__ == "__main__":
