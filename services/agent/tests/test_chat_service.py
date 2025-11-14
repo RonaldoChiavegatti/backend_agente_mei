@@ -12,6 +12,7 @@ if str(TEST_ROOT) not in sys.path:
     sys.path.insert(0, str(TEST_ROOT))
 
 from app.services.chat import AgentChatService
+from app.services.corrections import CorrectionResult
 from app.services.embeddings import LocalEmbeddingClient
 from app.services.financial_summary import FinancialSummary, SummaryBucket
 from app.services.repositories import MongoDocument, RagChunk
@@ -45,6 +46,49 @@ class _StubMongoRepository:
     def fetch_recent_documents(self, user_id, limit=5):
         self.calls.append((user_id, limit))
         return list(self.documents)
+
+
+class _CorrectionMongoRepository:
+    def __init__(self, documents_by_type):
+        self.documents = documents_by_type
+        self.correction_calls = []
+
+    def fetch_recent_documents(self, user_id, limit=5):  # pragma: no cover - unused
+        return []
+
+    def find_latest_by_type(self, user_id, document_type):
+        payload = self.documents.get(document_type)
+        if not payload:
+            return None
+        return MongoDocument(
+            document_id=payload["id"],
+            document_type=document_type,
+            extracted_text=payload.get("text", ""),
+            extracted_data=payload.get("data"),
+        )
+
+    def apply_correction(self, user_id, document_id, field, new_value):
+        for doc_type, payload in self.documents.items():
+            if payload["id"] != document_id:
+                continue
+            data = payload.setdefault("data", {})
+            previous = data.get(field)
+            data[field] = new_value
+            payload["version"] = payload.get("version", 0) + 1
+            result = CorrectionResult(
+                document_id=document_id,
+                document_type=doc_type,
+                field=field,
+                previous_value=previous,
+                current_value=new_value,
+                version=payload["version"],
+                data_snapshot=dict(data),
+            )
+            self.correction_calls.append(
+                (user_id, doc_type, document_id, field, new_value)
+            )
+            return result
+        return None
 
 
 class AgentChatServiceTestCase(unittest.TestCase):
@@ -107,6 +151,117 @@ class AgentChatServiceTestCase(unittest.TestCase):
         self.assertIn("Principais trechos considerados", answer)
         self.assertEqual(debug["financial_summary"]["revenues"]["total"], 2500.0)
         self.assertEqual(len(debug["chunks"]), 2)
+
+    def test_updates_expense_value_via_correction(self):
+        empty_summary = FinancialSummary(
+            revenues=SummaryBucket(total=0.0, breakdown={}),
+            expenses=SummaryBucket(total=0.0, breakdown={}),
+            mei_info={},
+        )
+        summary_builder = _StubSummaryBuilder(empty_summary)
+        rag_repo = _StubRagRepository([])
+        mongo_repo = _CorrectionMongoRepository(
+            {
+                "DESPESA_DEDUTIVEL": {
+                    "id": "expense-1",
+                    "data": {"valor": 200.0, "categoria": "educação"},
+                }
+            }
+        )
+
+        service = AgentChatService(
+            rag_repository=rag_repo,
+            summary_builder=summary_builder,
+            embedder=self.embedder,
+            mongo_repository=mongo_repo,
+            top_k=3,
+        )
+
+        answer, debug = service.answer_question(
+            self.user_id, "Corrija a despesa dedutível para R$ 300,00"
+        )
+
+        self.assertIn("Atualizei", answer)
+        self.assertIn("R$ 300,00", answer)
+        self.assertTrue(debug["correction"]["applied"])
+        self.assertEqual(debug["correction"]["current_value"], 300.0)
+        self.assertEqual(
+            mongo_repo.documents["DESPESA_DEDUTIVEL"]["data"]["valor"], 300.0
+        )
+        self.assertEqual(summary_builder.calls, [])
+
+    def test_updates_lucro_tributavel_in_dasn(self):
+        empty_summary = FinancialSummary(
+            revenues=SummaryBucket(total=0.0, breakdown={}),
+            expenses=SummaryBucket(total=0.0, breakdown={}),
+            mei_info={},
+        )
+        summary_builder = _StubSummaryBuilder(empty_summary)
+        rag_repo = _StubRagRepository([])
+        mongo_repo = _CorrectionMongoRepository(
+            {
+                "DASN_SIMEI": {
+                    "id": "dasn-1",
+                    "data": {"lucro_tributavel": 12000.0, "lucro_isento": 8000.0},
+                }
+            }
+        )
+
+        service = AgentChatService(
+            rag_repository=rag_repo,
+            summary_builder=summary_builder,
+            embedder=self.embedder,
+            mongo_repository=mongo_repo,
+            top_k=3,
+        )
+
+        answer, debug = service.answer_question(
+            self.user_id, "Atualize o lucro tributável para R$ 15.500,00"
+        )
+
+        self.assertIn("lucro tributável", answer)
+        self.assertTrue(debug["correction"]["applied"])
+        self.assertEqual(debug["correction"]["current_value"], 15500.0)
+        self.assertEqual(
+            mongo_repo.documents["DASN_SIMEI"]["data"]["lucro_tributavel"], 15500.0
+        )
+
+    def test_reclassifies_note_to_health_expense(self):
+        empty_summary = FinancialSummary(
+            revenues=SummaryBucket(total=0.0, breakdown={}),
+            expenses=SummaryBucket(total=0.0, breakdown={}),
+            mei_info={},
+        )
+        summary_builder = _StubSummaryBuilder(empty_summary)
+        rag_repo = _StubRagRepository([])
+        mongo_repo = _CorrectionMongoRepository(
+            {
+                "NOTA_FISCAL_RECEBIDA": {
+                    "id": "nf-1",
+                    "data": {"categoria": "educação"},
+                }
+            }
+        )
+
+        service = AgentChatService(
+            rag_repository=rag_repo,
+            summary_builder=summary_builder,
+            embedder=self.embedder,
+            mongo_repository=mongo_repo,
+            top_k=3,
+        )
+
+        answer, debug = service.answer_question(
+            self.user_id,
+            "Essa nota é despesa de saúde, não de educação",
+        )
+
+        self.assertIn("saúde", answer)
+        self.assertTrue(debug["correction"]["applied"])
+        self.assertEqual(
+            mongo_repo.documents["NOTA_FISCAL_RECEBIDA"]["data"]["categoria"],
+            "saúde",
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

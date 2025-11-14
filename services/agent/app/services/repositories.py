@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import contextlib
-from dataclasses import dataclass
-from typing import Iterable, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import TYPE_CHECKING, Iterable, List, Optional
 from uuid import UUID
 
+from bson import ObjectId
 from pymongo import MongoClient
 from sqlalchemy import Select, select, text
 from sqlalchemy.dialects.postgresql import insert
@@ -14,6 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.models import UserRagChunk
+if TYPE_CHECKING:  # pragma: no cover
+    from app.services.corrections import CorrectionResult
 
 
 @dataclass
@@ -53,6 +57,9 @@ class MongoDocument:
     document_id: str
     document_type: Optional[str]
     extracted_text: str
+    extracted_data: object | None = None
+    extracted_data_history: List[dict] = field(default_factory=list)
+    updated_at: Optional[datetime] = None
 
 
 class DocumentRepository:
@@ -181,8 +188,115 @@ class MongoDocumentRepository:
                         document_id=str(doc.get("_id")),
                         document_type=doc.get("document_type"),
                         extracted_text=doc.get("extracted_text", ""),
+                        extracted_data=doc.get("extracted_data"),
+                        extracted_data_history=doc.get(
+                            "extracted_data_history", []
+                        ),
+                        updated_at=doc.get("updated_at"),
                     )
                 )
             return documents
+        finally:
+            client.close()
+
+    def find_latest_by_type(
+        self, user_id: UUID, document_type: str
+    ) -> MongoDocument | None:
+        client = MongoClient(self._url)
+        try:
+            collection = client[self._db_name][self._collection]
+            query = {"document_type": document_type}
+            if user_id is not None:
+                query["user_id"] = str(user_id)
+
+            cursor = collection.find(query).sort("updated_at", -1).limit(1)
+            doc = next(cursor, None)
+            if not doc:
+                return None
+
+            return MongoDocument(
+                document_id=str(doc.get("_id")),
+                document_type=doc.get("document_type"),
+                extracted_text=doc.get("extracted_text", ""),
+                extracted_data=doc.get("extracted_data"),
+                extracted_data_history=doc.get("extracted_data_history", []),
+                updated_at=doc.get("updated_at"),
+            )
+        finally:
+            client.close()
+
+    def apply_correction(
+        self,
+        *,
+        user_id: UUID,
+        document_id: str,
+        field: str,
+        new_value,
+    ) -> "CorrectionResult | None":
+        client = MongoClient(self._url)
+        try:
+            collection = client[self._db_name][self._collection]
+            try:
+                object_id = ObjectId(document_id)
+            except Exception:
+                return None
+
+            query = {"_id": object_id}
+            if user_id is not None:
+                query["user_id"] = str(user_id)
+
+            document = collection.find_one(query)
+            if not document:
+                return None
+
+            extracted_data = document.get("extracted_data") or {}
+            if not isinstance(extracted_data, dict):
+                extracted_data = {"value": extracted_data}
+
+            previous_value = extracted_data.get(field)
+            updated_data = dict(extracted_data)
+            updated_data[field] = new_value
+
+            history: list[dict] = document.get("extracted_data_history", [])
+            version_number = len(history) + 1
+            now = datetime.utcnow()
+
+            version_entry = {
+                "version": version_number,
+                "author_type": "user",
+                "author_id": str(user_id),
+                "created_at": now,
+                "data_snapshot": updated_data,
+                "changes": [
+                    {
+                        "field_path": field,
+                        "previous_value": previous_value,
+                        "current_value": new_value,
+                    }
+                ],
+            }
+
+            collection.update_one(
+                query,
+                {
+                    "$set": {
+                        "extracted_data": updated_data,
+                        "updated_at": now,
+                    },
+                    "$push": {"extracted_data_history": version_entry},
+                },
+            )
+
+            from app.services.corrections import CorrectionResult
+
+            return CorrectionResult(
+                document_id=str(document.get("_id")),
+                document_type=document.get("document_type"),
+                field=field,
+                previous_value=previous_value,
+                current_value=new_value,
+                version=version_number,
+                data_snapshot=updated_data,
+            )
         finally:
             client.close()

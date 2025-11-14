@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence, Set as AbstractSet
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, Optional
 from uuid import UUID
@@ -115,63 +114,40 @@ class FinancialSummaryBuilder:
                 return False
             return any(fragment in text for fragment in target_fragments)
 
-        def is_container(node: object) -> bool:
-            if isinstance(node, (str, bytes, bytearray)):
-                return False
-            return isinstance(node, (Mapping, Sequence, AbstractSet))
-
         def visit(node: object, context_key: Optional[str] = None) -> None:
             if node is None:
                 return
 
-            if isinstance(node, Mapping):
+            if isinstance(node, dict):
                 for key, value in node.items():
                     normalized_key = _normalize_key(str(key))
                     key_matches = has_target(normalized_key)
-                    active_context = normalized_key if key_matches else context_key
+                    next_context = normalized_key if key_matches else context_key
 
-                    if not is_container(value):
-                        if key_matches or (
-                            active_context is not None and has_target(active_context)
-                        ):
-                            amount = _coerce_amount(value)
-                            if amount is not None:
-                                values.append(amount)
+                    if isinstance(value, (dict, list, tuple, set)):
+                        visit(value, next_context)
                         continue
 
-                    if key_matches or next_context:
+                    if key_matches or (
+                        context_key is not None and has_target(context_key)
+                    ):
                         amount = _coerce_amount(value)
                         if amount is not None:
                             values.append(amount)
                 return
 
-            if is_container(node):
+            if isinstance(node, (list, tuple, set)):
                 for item in node:
-                    if is_container(item):
-                        visit(item, context_key)
-                        continue
-
-                    amount = _coerce_amount(item)
-                    if amount is not None and (
-                        context_key is None
-                        or (
-                            has_target(context_key)
-                            and not _is_identifier_like(None, item)
-                        )
-                    ):
-                    if amount is not None and has_target_context:
-                        values.append(amount)
+                    visit(item, context_key)
                 return
 
             amount = _coerce_amount(node)
-            if amount is not None and (
-                context_key is None
-                or (
-                    has_target(context_key)
-                    and not _is_identifier_like(None, node)
-                )
+            if (
+                amount is not None
+                and context_key is not None
+                and has_target(context_key)
+                and not _is_identifier_like(None, node)
             ):
-            if amount is not None and has_target_context:
                 values.append(amount)
 
         visit(payload)

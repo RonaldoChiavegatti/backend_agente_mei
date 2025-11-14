@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import List, Tuple
 from uuid import UUID
 
+from app.services.corrections import CorrectionCommand, CorrectionParser
 from app.services.embeddings import LocalEmbeddingClient
 from app.services.financial_summary import (
     FinancialSummary,
@@ -28,14 +29,27 @@ class AgentChatService:
         embedder: LocalEmbeddingClient,
         mongo_repository: MongoDocumentRepository | None = None,
         top_k: int = 5,
+        correction_parser: CorrectionParser | None = None,
     ) -> None:
         self._rag_repository = rag_repository
         self._summary_builder = summary_builder
         self._embedder = embedder
         self._mongo_repository = mongo_repository
         self._top_k = top_k
+        self._correction_parser = correction_parser or (
+            CorrectionParser() if mongo_repository is not None else None
+        )
 
     def answer_question(self, user_id: UUID, question: str) -> Tuple[str, dict]:
+        if self._mongo_repository is not None and self._correction_parser is not None:
+            command = self._correction_parser.parse(question)
+            if command:
+                correction_response = self._handle_correction(
+                    user_id=user_id, question=question, command=command
+                )
+                if correction_response is not None:
+                    return correction_response
+
         summary = self._summary_builder.build_summary(user_id)
         query_embedding = self._embedder.embed_query(question)
         chunks = self._rag_repository.find_similar(
@@ -75,6 +89,81 @@ class AgentChatService:
             "chunks": [chunk.to_dict() for chunk in chunks],
         }
         return answer, debug_payload
+
+    def _handle_correction(
+        self,
+        *,
+        user_id: UUID,
+        question: str,
+        command: CorrectionCommand,
+    ) -> Tuple[str, dict] | None:
+        if self._mongo_repository is None or self._correction_parser is None:
+            return None
+
+        document = self._mongo_repository.find_latest_by_type(
+            user_id, command.document_type
+        )
+        if not document:
+            message = (
+                "Não encontrei nenhum documento desse tipo para ajustar agora. "
+                "Confira se o arquivo já foi processado e tente novamente."
+            )
+            debug = {
+                "question": question,
+                "correction": {
+                    "applied": False,
+                    "reason": "document_not_found",
+                    "document_type": command.document_type,
+                    "field": command.field,
+                    "requested_value": command.value_text,
+                },
+            }
+            return message, debug
+
+        result = self._mongo_repository.apply_correction(
+            user_id=user_id,
+            document_id=document.document_id,
+            field=command.field,
+            new_value=command.value,
+        )
+
+        if result is None:
+            message = (
+                "Não consegui aplicar essa correção porque o documento não foi localizado."
+            )
+            debug = {
+                "question": question,
+                "correction": {
+                    "applied": False,
+                    "reason": "apply_failed",
+                    "document_type": command.document_type,
+                    "field": command.field,
+                    "document_id": document.document_id,
+                },
+            }
+            return message, debug
+
+        summary_text = self._correction_parser.describe(command)
+        message = (
+            f"Certo! Atualizei {summary_text}. "
+            "A nova versão foi registrada no histórico do documento."
+        )
+
+        debug_payload = {
+            "question": question,
+            "correction": {
+                "applied": True,
+                "command": {
+                    "document_type": command.document_type,
+                    "field": command.field,
+                    "value": command.value,
+                    "value_text": command.value_text,
+                    "intent": command.intent,
+                },
+                **result.to_dict(),
+            },
+        }
+        return message, debug_payload
 
     def _compose_answer(
         self, question: str, summary: FinancialSummary, chunks: List[RagChunk]

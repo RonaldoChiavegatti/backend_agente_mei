@@ -1,4 +1,4 @@
-"""Unit tests for the financial summary builder."""
+"""Unit tests for :mod:`app.services.financial_summary`."""
 
 from __future__ import annotations
 
@@ -75,6 +75,19 @@ class FinancialSummaryBuilderTestCase(unittest.TestCase):
             DocumentRecord(
                 document_type="NOTA_FISCAL_EMITIDA",
                 extracted_data=nested_payload,
+            )
+        ]
+        repository = _StubDocumentRepository(records)
+        builder = FinancialSummaryBuilder(repository)
+
+        summary = builder.build_summary(self.user_id)
+
+        expected_amount = 100.0 + 200.0 + 50.0 + 25.0
+        self.assertAlmostEqual(summary.revenues.total, expected_amount)
+        self.assertEqual(
+            summary.revenues.breakdown["NOTA_FISCAL_EMITIDA"], expected_amount
+        )
+
     def test_extract_values_from_nested_payloads(self):
         records = [
             DocumentRecord(
@@ -96,11 +109,6 @@ class FinancialSummaryBuilderTestCase(unittest.TestCase):
 
         summary = builder.build_summary(self.user_id)
 
-        self.assertAlmostEqual(summary.revenues.total, 100.0 + 200.0 + 50.0 + 25.0)
-        self.assertEqual(
-            summary.revenues.breakdown["NOTA_FISCAL_EMITIDA"],
-            100.0 + 200.0 + 50.0 + 25.0,
-        )
         expected_total = 1200.0 + 300.0 + 150.25 + 50.0 + 99.75
         self.assertAlmostEqual(summary.revenues.total, expected_total)
         self.assertEqual(summary.expenses.total, 0.0)

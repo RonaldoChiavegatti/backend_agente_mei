@@ -8,7 +8,22 @@ from sqlalchemy import DateTime, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from pgvector.sqlalchemy import Vector
+try:  # pragma: no cover - optional dependency for tests
+    from pgvector.sqlalchemy import Vector
+except ModuleNotFoundError:  # pragma: no cover - fallback for local unit tests
+    from sqlalchemy.types import TypeDecorator
+
+    class Vector(TypeDecorator):  # type: ignore[misc]
+        """Fallback column type storing vectors as JSON when pgvector is absent."""
+
+        impl = JSONB
+        cache_ok = True
+
+        def process_bind_param(self, value, dialect):  # pragma: no cover
+            return value
+
+        def process_result_value(self, value, dialect):  # pragma: no cover
+            return value
 
 from app.core.config import settings
 from app.db.session import Base
