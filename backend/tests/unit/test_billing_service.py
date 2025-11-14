@@ -18,12 +18,24 @@ from services.billing_service.application.exceptions import UserNotFoundError
 from services.billing_service.application.ports.output.billing_repository import (
     BillingRepository,
 )
+from services.billing_service.application.domain.transaction import (
+    Transaction,
+    TransactionType,
+)
+from services.document_service.application.ports.output.document_job_repository import (
+    DocumentJobRepository,
+)
+from services.document_service.application.domain.document_job import DocumentType
 
 
 class TestBillingService(unittest.TestCase):
     def setUp(self):
         self.mock_billing_repo = MagicMock(spec=BillingRepository)
-        self.service = BillingServiceImpl(billing_repository=self.mock_billing_repo)
+        self.mock_document_repo = MagicMock(spec=DocumentJobRepository)
+        self.service = BillingServiceImpl(
+            billing_repository=self.mock_billing_repo,
+            document_job_repository=self.mock_document_repo,
+        )
 
         self.user_id = uuid.uuid4()
         self.test_balance = UserBalance(
@@ -122,6 +134,55 @@ class TestBillingService(unittest.TestCase):
         self.mock_billing_repo.get_user_usage_in_period.assert_called_once_with(
             user_id=self.user_id, start_date=start_date, end_date=end_date
         )
+
+    def test_get_user_transactions_history_without_document(self):
+        transaction = Transaction(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            amount=-20,
+            type=TransactionType.CHARGE,
+            description="Chat with agent Financeiro",
+            created_at=datetime(2024, 1, 1),
+        )
+
+        self.mock_billing_repo.get_user_transactions.return_value = [transaction]
+        self.mock_document_repo.get_by_id.return_value = None
+
+        result = self.service.get_user_transactions(user_id=self.user_id)
+
+        self.assertEqual(len(result), 1)
+        record = result[0]
+        self.assertEqual(record.tokens, 20)
+        self.assertEqual(record.consultation_type, "chat")
+        self.assertEqual(record.document_type, "Conhecimento geral do agente")
+        self.assertIn("Documentos: Conhecimento geral do agente", record.description)
+
+    def test_get_user_transactions_history_with_document(self):
+        related_job_id = uuid.uuid4()
+        transaction = Transaction(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            amount=-45,
+            type=TransactionType.CHARGE,
+            description="Análise de limites",
+            related_job_id=related_job_id,
+            created_at=datetime(2024, 1, 2),
+        )
+
+        mock_job = MagicMock()
+        mock_job.document_type = DocumentType.NOTA_FISCAL_EMITIDA
+
+        self.mock_billing_repo.get_user_transactions.return_value = [transaction]
+        self.mock_document_repo.get_by_id.return_value = mock_job
+
+        result = self.service.get_user_transactions(user_id=self.user_id)
+
+        self.mock_document_repo.get_by_id.assert_called_once_with(related_job_id)
+        record = result[0]
+        self.assertEqual(record.tokens, 45)
+        self.assertEqual(record.consultation_type, "análise")
+        self.assertEqual(record.document_type, "Notas fiscais emitidas")
+        self.assertIn("Documentos: Notas fiscais emitidas", record.description)
 
 
 if __name__ == "__main__":

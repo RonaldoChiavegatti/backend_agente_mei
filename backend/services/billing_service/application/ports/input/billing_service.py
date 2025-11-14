@@ -4,7 +4,7 @@ import uuid
 
 from shared.models.base_models import (
     UserBalance as UserBalanceResponse,
-    Transaction as TransactionResponse,
+    TokenUsageRecord,
     TokenUsageSummary as TokenUsageSummaryResponse,
 )
 
@@ -26,7 +26,7 @@ class BillingService(ABC):
         pass
 
     @abstractmethod
-    def get_user_transactions(self, user_id: uuid.UUID) -> List[TransactionResponse]:
+    def get_user_transactions(self, user_id: uuid.UUID) -> List[TokenUsageRecord]:
         """Retrieves the transaction history for a user."""
         pass
 

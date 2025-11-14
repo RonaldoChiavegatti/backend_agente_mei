@@ -138,6 +138,17 @@ class Transaction(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TokenUsageRecord(BaseModel):
+    id: uuid.UUID
+    date: datetime
+    tokens: int
+    consultation_type: str
+    description: str
+    document_type: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TokenUsageSummary(BaseModel):
     user_id: uuid.UUID
     tokens_consumed: int

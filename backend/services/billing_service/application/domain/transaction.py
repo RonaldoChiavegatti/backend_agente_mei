@@ -17,4 +17,5 @@ class Transaction(BaseModel):
     amount: int
     type: TransactionType
     description: Optional[str] = None
+    related_job_id: Optional[uuid.UUID] = None
     created_at: datetime

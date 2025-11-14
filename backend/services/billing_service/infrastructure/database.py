@@ -31,6 +31,7 @@ class TransactionModel(Base):
     amount = Column(BigInteger, nullable=False)
     type = Column(Enum(TransactionType), nullable=False)
     description = Column(String)
+    related_job_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
