@@ -460,6 +460,55 @@ class TestDocumentService(unittest.TestCase):
             summary.documentos_considerados,
         )
         self.assertTrue(summary.observacoes)
+        self.assertIsNone(summary.alerta_limite)
+
+    def test_get_annual_revenue_summary_with_warning_alert(self):
+        near_limit_job = DocumentJob(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            file_path="/tmp/nf.pdf",
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data={"valor": 75000.0, "data": "2024-05-01"},
+            created_at=datetime(2024, 5, 2),
+        )
+
+        self.mock_job_repo.get_by_user_id.return_value = [near_limit_job]
+
+        summary = self.doc_service.get_annual_revenue_summary(
+            user_id=self.user_id, year=2024
+        )
+
+        self.assertIsNotNone(summary.alerta_limite)
+        assert summary.alerta_limite is not None
+        self.assertEqual(summary.alerta_limite.nivel, "atencao")
+        self.assertIn("90%", summary.alerta_limite.mensagem)
+        self.assertGreaterEqual(summary.alerta_limite.percentual_utilizado, 90.0)
+        self.assertLess(summary.alerta_limite.percentual_utilizado, 100.0)
+
+    def test_get_annual_revenue_summary_with_critical_alert(self):
+        above_limit_job = DocumentJob(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            file_path="/tmp/nf.pdf",
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+            status=ProcessingStatus.COMPLETED,
+            extracted_data={"valor": 82000.0, "data": "2024-06-01"},
+            created_at=datetime(2024, 6, 2),
+        )
+
+        self.mock_job_repo.get_by_user_id.return_value = [above_limit_job]
+
+        summary = self.doc_service.get_annual_revenue_summary(
+            user_id=self.user_id, year=2024
+        )
+
+        self.assertIsNotNone(summary.alerta_limite)
+        assert summary.alerta_limite is not None
+        self.assertEqual(summary.alerta_limite.nivel, "critico")
+        self.assertIn("ultrapassado", summary.alerta_limite.mensagem)
+        self.assertGreaterEqual(summary.alerta_limite.percentual_utilizado, 100.0)
+        self.assertTrue(summary.observacoes)
 
     def test_get_monthly_revenue_summary(self):
         nf_january = DocumentJob(

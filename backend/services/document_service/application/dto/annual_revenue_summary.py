@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Dict, List
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -22,6 +22,23 @@ class AnnualRevenueSourceBreakdown(BaseModel):
     )
     quantidade_documentos: int = Field(
         description="Quantidade de documentos considerados para o tipo."
+    )
+
+
+class AnnualRevenueLimitAlert(BaseModel):
+    """Alert information triggered when the annual revenue approaches the limit."""
+
+    nivel: Literal["atencao", "critico"] = Field(
+        description="Nível de severidade do alerta para exibição no dashboard.",
+    )
+    mensagem: str = Field(
+        description="Mensagem explicando o motivo do alerta e a ação recomendada.",
+    )
+    percentual_utilizado: float = Field(
+        description="Percentual do limite anual que já foi utilizado.",
+    )
+    percentual_utilizado_formatado: str = Field(
+        description="Percentual utilizado formatado em porcentagem para exibição.",
     )
 
 
@@ -56,4 +73,8 @@ class AnnualRevenueSummaryResponse(BaseModel):
     documentos_considerados: List[str] = Field(
         default_factory=list,
         description="Lista textual dos tipos de documentos incluídos no cálculo.",
+    )
+    alerta_limite: Optional[AnnualRevenueLimitAlert] = Field(
+        default=None,
+        description="Alerta exibido quando o faturamento se aproxima ou ultrapassa o limite anual.",
     )

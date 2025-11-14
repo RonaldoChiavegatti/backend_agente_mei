@@ -3,7 +3,7 @@ import re
 import uuid
 from collections import defaultdict
 from datetime import datetime
-from typing import IO, Dict, Any, List, Optional
+from typing import IO, Dict, Any, List, Optional, Literal
 
 from services.document_service.application.domain.document_job import (
     DocumentJob,
@@ -33,6 +33,7 @@ from services.document_service.application.dto.document_details import (
     DocumentDetailsResponse,
 )
 from services.document_service.application.dto.annual_revenue_summary import (
+    AnnualRevenueLimitAlert,
     AnnualRevenueSummaryResponse,
     AnnualRevenueSourceBreakdown,
 )
@@ -260,6 +261,8 @@ class DocumentServiceImpl(DocumentService):
         limit_formatted = self._format_currency(self._ANNUAL_LIMIT)
         highlight = f"Faturamento Anual: {total_formatted} / {limit_formatted}"
 
+        alert = self._build_annual_limit_alert(total_revenue)
+
         notes = [
             (
                 "Documentos de despesas, documentos de identificação, comprovantes de "
@@ -278,6 +281,7 @@ class DocumentServiceImpl(DocumentService):
             detalhamento=breakdown_models,
             observacoes=notes,
             documentos_considerados=sorted(considered_labels),
+            alerta_limite=alert,
         )
 
     def get_monthly_revenue_summary(
@@ -726,6 +730,39 @@ class DocumentServiceImpl(DocumentService):
             except ValueError:
                 return None
         return None
+
+    def _build_annual_limit_alert(
+        self, total_revenue: float
+    ) -> Optional[AnnualRevenueLimitAlert]:
+        if self._ANNUAL_LIMIT <= 0:
+            return None
+
+        usage_ratio = total_revenue / self._ANNUAL_LIMIT
+        if usage_ratio < 0.9:
+            return None
+
+        usage_percentage = round(usage_ratio * 100, 2)
+        percentage_label = f"{usage_percentage:.2f}%"
+
+        if usage_ratio >= 1:
+            message = (
+                "Limite anual do MEI ultrapassado. Considere avaliar a migração de "
+                "regime ou ajustes no faturamento."
+            )
+            level: Literal["critico", "atencao"] = "critico"
+        else:
+            message = (
+                "Você atingiu 90% do limite anual do MEI. Planeje suas próximas ações "
+                "para evitar o desenquadramento."
+            )
+            level = "atencao"
+
+        return AnnualRevenueLimitAlert(
+            nivel=level,
+            mensagem=message,
+            percentual_utilizado=usage_percentage,
+            percentual_utilizado_formatado=percentage_label,
+        )
 
     @staticmethod
     def _format_currency(value: float) -> str:
