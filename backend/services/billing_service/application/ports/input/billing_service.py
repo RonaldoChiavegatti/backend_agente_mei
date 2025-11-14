@@ -5,6 +5,7 @@ import uuid
 from shared.models.base_models import (
     UserBalance as UserBalanceResponse,
     Transaction as TransactionResponse,
+    TokenUsageSummary as TokenUsageSummaryResponse,
 )
 
 
@@ -27,4 +28,11 @@ class BillingService(ABC):
     @abstractmethod
     def get_user_transactions(self, user_id: uuid.UUID) -> List[TransactionResponse]:
         """Retrieves the transaction history for a user."""
+        pass
+
+    @abstractmethod
+    def get_user_monthly_usage(
+        self, user_id: uuid.UUID
+    ) -> TokenUsageSummaryResponse:
+        """Retrieves aggregated usage information for the current month."""
         pass

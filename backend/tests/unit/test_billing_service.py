@@ -13,6 +13,7 @@ from services.billing_service.application.services.billing_service_impl import (
     BillingServiceImpl,
 )
 from services.billing_service.application.domain.balance import UserBalance
+from services.billing_service.application.domain.usage_summary import UserMonthlyUsage
 from services.billing_service.application.exceptions import UserNotFoundError
 from services.billing_service.application.ports.output.billing_repository import (
     BillingRepository,
@@ -92,6 +93,35 @@ class TestBillingService(unittest.TestCase):
         # Act & Assert
         with self.assertRaises(UserNotFoundError):
             self.service.get_user_balance(user_id=self.user_id)
+
+    def test_get_user_monthly_usage(self):
+        # Arrange
+        start_date = datetime(2024, 5, 1)
+        end_date = datetime(2024, 6, 1)
+        usage_summary = UserMonthlyUsage(
+            user_id=self.user_id,
+            tokens_consumed=30,
+            consultations_count=3,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        self.service._get_current_month_range = MagicMock(
+            return_value=(start_date, end_date)
+        )
+        self.mock_billing_repo.get_user_usage_in_period.return_value = (
+            usage_summary
+        )
+
+        # Act
+        result = self.service.get_user_monthly_usage(user_id=self.user_id)
+
+        # Assert
+        self.assertEqual(result.tokens_consumed, 30)
+        self.assertEqual(result.consultations_count, 3)
+        self.mock_billing_repo.get_user_usage_in_period.assert_called_once_with(
+            user_id=self.user_id, start_date=start_date, end_date=end_date
+        )
 
 
 if __name__ == "__main__":

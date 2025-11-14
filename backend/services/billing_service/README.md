@@ -76,6 +76,27 @@ Retorna uma lista de todas as transações de um usuário.
 - **Possíveis Erros:**
   - `404 NOT_FOUND`: Usuário não encontrado.
 
+### `GET /monthly-usage/{user_id}`
+
+Retorna um resumo agregado de uso de tokens do usuário no mês corrente.
+
+- **Parâmetros de URL:**
+  - `user_id`: O ID do usuário.
+
+- **Response (200 OK):**
+  ```json
+  {
+    "user_id": "uuid",
+    "tokens_consumed": "integer",
+    "consultations_count": "integer",
+    "start_date": "datetime",
+    "end_date": "datetime"
+  }
+  ```
+
+- **Observações:**
+  - Retorna `0` para os campos de contagem e consumo quando não houver consultas no período.
+
 ## Dependências
 
 As principais dependências deste serviço são:

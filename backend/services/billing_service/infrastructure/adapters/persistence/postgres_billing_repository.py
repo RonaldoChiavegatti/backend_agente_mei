@@ -1,8 +1,15 @@
 import uuid
+from datetime import datetime
 from typing import List, Optional
 
 from services.billing_service.application.domain.balance import UserBalance
-from services.billing_service.application.domain.transaction import Transaction
+from services.billing_service.application.domain.transaction import (
+    Transaction,
+    TransactionType,
+)
+from services.billing_service.application.domain.usage_summary import (
+    UserMonthlyUsage,
+)
 from services.billing_service.application.ports.output.billing_repository import (
     BillingRepository,
 )
@@ -10,7 +17,7 @@ from services.billing_service.infrastructure.database import (
     TransactionModel,
     UserBalanceModel,
 )
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 
@@ -76,3 +83,29 @@ class PostgresBillingRepository(BillingRepository):
         except Exception as e:
             self.db.rollback()
             raise e
+
+    def get_user_usage_in_period(
+        self, user_id: uuid.UUID, start_date: datetime, end_date: datetime
+    ) -> UserMonthlyUsage:
+        total_amount, total_count = (
+            self.db.query(
+                func.coalesce(func.sum(TransactionModel.amount), 0),
+                func.count(TransactionModel.id),
+            )
+            .filter(TransactionModel.user_id == user_id)
+            .filter(TransactionModel.type == TransactionType.CHARGE)
+            .filter(TransactionModel.created_at >= start_date)
+            .filter(TransactionModel.created_at < end_date)
+            .one()
+        )
+
+        tokens_consumed = int(-(total_amount or 0))
+        consultations_count = int(total_count or 0)
+
+        return UserMonthlyUsage(
+            user_id=user_id,
+            tokens_consumed=tokens_consumed,
+            consultations_count=consultations_count,
+            start_date=start_date,
+            end_date=end_date,
+        )
