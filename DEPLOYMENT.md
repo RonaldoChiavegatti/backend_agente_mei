@@ -76,9 +76,30 @@ docker compose logs -f
 
 ## 6. Persistência e backups
 
-Os volumes nomeados definidos no `docker-compose.yml` armazenam os dados do Postgres e do MongoDB. Faça snapshots periódicos da VM ou utilize `docker cp`/`pg_dump`/`mongodump` para backups em produção.
+Os volumes nomeados definidos no `docker-compose.yml` armazenam os dados do Postgres e do MongoDB. Faça snapshots periódicos da VM ou utilize os scripts de backup descritos abaixo.
 
-## 7. Testar os endpoints externos
+## 7. Backups
+
+### Execução manual
+
+```bash
+./scripts/backup_postgres.sh
+./scripts/backup_mongo.sh
+```
+
+Os artefatos são gravados em `./backups/postgres` e `./backups/mongo` dentro do diretório do projeto na VM.
+
+### Agendamento (exemplo)
+
+Para agendar um backup diário às 2h, adicione a seguinte entrada ao crontab do usuário que executa o Docker (ajuste o caminho conforme necessário):
+
+```cron
+0 2 * * * cd /caminho/para/backend_agente_mei && ./scripts/backup_postgres.sh && ./scripts/backup_mongo.sh >> /var/log/mei_backups.log 2>&1
+```
+
+Certifique-se de que o usuário do cron possua permissão para executar `docker exec` sem senha.
+
+## 8. Testar os endpoints externos
 
 Após o `docker compose up`, valide se o NGINX está respondendo (ajuste `<IP-OU-DOMINIO>`):
 
@@ -89,7 +110,7 @@ curl http://<IP-OU-DOMINIO>/api/documents/health
 
 Cada endpoint deve retornar `200 OK` com uma resposta JSON de saúde do respectivo serviço.
 
-## 8. Habilitar HTTPS (opcional)
+## 9. Habilitar HTTPS (opcional)
 
 Se quiser expor HTTPS diretamente na VM:
 
@@ -99,7 +120,7 @@ Se quiser expor HTTPS diretamente na VM:
 
 Alternativamente, utilize um load balancer/reverse proxy do provedor de nuvem que termine TLS e encaminhe para a porta `80` da VM.
 
-## 9. Atualizações futuras
+## 10. Atualizações futuras
 
 Para publicar uma nova versão:
 
