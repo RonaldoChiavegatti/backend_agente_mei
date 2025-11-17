@@ -22,8 +22,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -36,8 +34,6 @@ services:
     image: mongo:7
     container_name: mongo
     restart: unless-stopped
-    ports:
-      - "27017:27017"
     volumes:
       - mongo_data:/data/db
 
@@ -45,8 +41,6 @@ services:
     image: redis:7
     container_name: redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
 
   auth:
     <<: *service-defaults
@@ -55,8 +49,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "8001:8000"
 
   documents:
     <<: *service-defaults
@@ -69,8 +61,6 @@ services:
         condition: service_started
       redis:
         condition: service_started
-    ports:
-      - "8002:8000"
 
   agent:
     <<: *service-defaults
@@ -79,8 +69,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "8003:8000"
 
   billing:
     <<: *service-defaults
@@ -89,8 +77,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "8004:8000"
 
   worker:
     <<: *service-defaults
