@@ -119,11 +119,8 @@ services:
         condition: service_started
     ports:
       - "${NGINX_HOST_PORT:-8080}:80"
-      - "${NGINX_SSL_HOST_PORT:-8443}:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl.conf:/etc/nginx/conf.d/ssl.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
 
 volumes:
   postgres_data:

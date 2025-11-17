@@ -50,8 +50,8 @@ Caso prefira copiar apenas os artefatos necessários, transfira para a VM o cont
    - **Oracle Object Storage:** informe `ORACLE_ENDPOINT`, `ORACLE_ACCESS_KEY_ID`, `ORACLE_SECRET_ACCESS_KEY` e `ORACLE_BUCKET` usados para o armazenamento de documentos. Caso utilize outro provedor S3-compatível, ajuste o endpoint e chaves.
    - **GEMINI_API_KEY:** chave válida do provedor de LLM.
    - **JWT_SECRET_KEY:** gere um segredo aleatório.
-   - **ENVIRONMENT:** defina `prod` ou outro valor que represente o ambiente remoto.
-   - **NGINX_HOST_PORT:** defina `80` para expor o gateway diretamente na porta HTTP padrão. Para usar HTTPS através de um load balancer externo, mantenha o valor conforme a necessidade.
+- **ENVIRONMENT:** defina `prod` ou outro valor que represente o ambiente remoto.
+- **NGINX_HOST_PORT:** defina `80` para expor o gateway diretamente na porta HTTP padrão (recomendado para receber tráfego do load balancer com TLS já terminado).
 
 > Dica: utilize `openssl rand -hex 32` para gerar segredos aleatórios.
 
@@ -111,15 +111,15 @@ curl http://<IP-OU-DOMINIO>/api/documents/health
 Cada endpoint deve retornar `200 OK` com uma resposta JSON de saúde do respectivo serviço.
 Esse é o check rápido pós-deploy para confirmar que o roteamento do gateway está preservando o prefixo das rotas de saúde.
 
-## 9. Habilitar HTTPS (opcional)
+## 9. Habilitar HTTPS com load balancer
 
-Se quiser expor HTTPS diretamente na VM:
+Para evitar gerenciar certificados dentro da VM, utilize o load balancer do provedor de nuvem para terminar TLS e encaminhar tráfego HTTP para a porta `80` do NGINX:
 
-1. Instale o Certbot (`sudo snap install --classic certbot`).
-2. Crie um arquivo `nginx/ssl.conf` com o bloco de servidor HTTPS desejado ou adapte `nginx.conf`.
-3. Atualize o `docker-compose.yml` para montar a configuração HTTPS e recarregue o compose.
+1. Crie um listener HTTPS no load balancer, anexe o certificado (Let’s Encrypt ou gerenciado pelo provedor) e aponte o backend para a porta `80` da VM.
+2. Configure o health check do LB para usar HTTP (porta `80`) em um dos endpoints de saúde, como `/api/auth/health`.
+3. Mantenha o `docker-compose.yml` padrão, que publica apenas a porta `80` e não carrega `ssl.conf`. O NGINX não precisa conhecer certificados.
 
-Alternativamente, utilize um load balancer/reverse proxy do provedor de nuvem que termine TLS e encaminhe para a porta `80` da VM.
+> Dica: se, futuramente, for necessário terminar TLS diretamente na VM, adicione novamente um bloco `listen 443 ssl` em `nginx/ssl.conf` e exponha a porta `443` no `docker-compose.yml` com os certificados montados em `/etc/letsencrypt`.
 
 ## 10. Atualizações futuras
 
