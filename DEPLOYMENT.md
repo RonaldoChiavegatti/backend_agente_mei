@@ -51,7 +51,7 @@ Caso prefira copiar apenas os artefatos necessários, transfira para a VM o cont
    - **GEMINI_API_KEY:** chave válida do provedor de LLM.
    - **JWT_SECRET_KEY:** gere um segredo aleatório.
 - **ENVIRONMENT:** defina `prod` ou outro valor que represente o ambiente remoto.
-- **NGINX_HOST_PORT:** defina `80` para expor o gateway diretamente na porta HTTP padrão (recomendado para receber tráfego do load balancer com TLS já terminado).
+- **NGINX_HOST_PORT:** defina `8080` para expor todo o tráfego HTTP via NGINX na própria VM. Caso use um load balancer terminando TLS, faça-o encaminhar para essa porta.
 
 > Dica: utilize `openssl rand -hex 32` para gerar segredos aleatórios.
 
@@ -67,6 +67,8 @@ docker compose up -d --build
 ```
 
 O compose iniciará os seguintes componentes: Postgres, MongoDB, Redis, serviços FastAPI (auth, documents, agent, billing), o worker de OCR e o NGINX que faz o roteamento externo.
+
+Somente o NGINX publica porta na máquina host (`8080` por padrão). Os demais serviços permanecem isolados na rede interna do Docker, servindo apenas como upstreams para o proxy reverso.
 
 Para acompanhar os logs:
 
@@ -101,11 +103,11 @@ Certifique-se de que o usuário do cron possua permissão para executar `docker 
 
 ## 8. Testar os endpoints externos
 
-Após o `docker compose up`, valide se o NGINX está respondendo (ajuste `<IP-OU-DOMINIO>`):
+Após o `docker compose up`, valide se o NGINX está respondendo na porta `8080` (ajuste `<IP-OU-DOMINIO>`):
 
 ```bash
-curl http://<IP-OU-DOMINIO>/api/auth/health
-curl http://<IP-OU-DOMINIO>/api/documents/health
+curl http://<IP-OU-DOMINIO>:8080/api/auth/health
+curl http://<IP-OU-DOMINIO>:8080/api/documents/health
 ```
 
 Cada endpoint deve retornar `200 OK` com uma resposta JSON de saúde do respectivo serviço.
@@ -113,11 +115,11 @@ Esse é o check rápido pós-deploy para confirmar que o roteamento do gateway e
 
 ## 9. Habilitar HTTPS com load balancer
 
-Para evitar gerenciar certificados dentro da VM, utilize o load balancer do provedor de nuvem para terminar TLS e encaminhar tráfego HTTP para a porta `80` do NGINX:
+Para evitar gerenciar certificados dentro da VM, utilize o load balancer do provedor de nuvem para terminar TLS e encaminhar tráfego HTTP para a porta `8080` do NGINX:
 
-1. Crie um listener HTTPS no load balancer, anexe o certificado (Let’s Encrypt ou gerenciado pelo provedor) e aponte o backend para a porta `80` da VM.
-2. Configure o health check do LB para usar HTTP (porta `80`) em um dos endpoints de saúde, como `/api/auth/health`.
-3. Mantenha o `docker-compose.yml` padrão, que publica apenas a porta `80` e não carrega `ssl.conf`. O NGINX não precisa conhecer certificados.
+1. Crie um listener HTTPS no load balancer, anexe o certificado (Let’s Encrypt ou gerenciado pelo provedor) e aponte o backend para a porta `8080` da VM.
+2. Configure o health check do LB para usar HTTP (porta `8080`) em um dos endpoints de saúde, como `/api/auth/health`.
+3. Mantenha o `docker-compose.yml` padrão, que publica apenas a porta `8080` e não carrega `ssl.conf`. O NGINX não precisa conhecer certificados.
 
 > Dica: se, futuramente, for necessário terminar TLS diretamente na VM, adicione novamente um bloco `listen 443 ssl` em `nginx/ssl.conf` e exponha a porta `443` no `docker-compose.yml` com os certificados montados em `/etc/letsencrypt`.
 
