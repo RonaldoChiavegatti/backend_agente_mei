@@ -99,6 +99,10 @@ from services.document_service.application.domain.document_job import (  # noqa:
     DocumentType,
     ProcessingStatus,
 )
+from services.document_service.application.dto.dashboard_basic_metrics import (  # noqa: E402
+    DashboardBasicMetricsResponse,
+    DashboardCounter,
+)
 from services.document_service.application.dto.document_details import (  # noqa: E402
     DocumentDetailsResponse,
 )
@@ -123,11 +127,13 @@ class FakeDocumentService:
         job: DocumentJobResponse | None = None,
         jobs: list[DocumentJobResponse] | None = None,
         details: DocumentDetailsResponse | None = None,
+        basic_metrics: DashboardBasicMetricsResponse | None = None,
         error: Exception | None = None,
     ) -> None:
         self.job = job
         self.jobs = jobs or []
         self.details = details
+        self.basic_metrics = basic_metrics
         self.error = error
         self.last_document_type: DocumentType | None = None
         self.received_payload: dict | None = None
@@ -176,8 +182,11 @@ class FakeDocumentService:
     def get_monthly_revenue_summary(self, *args, **kwargs):  # pragma: no cover - unused stub
         raise NotImplementedError()
 
-    def get_basic_dashboard_metrics(self, *args, **kwargs):  # pragma: no cover - unused stub
-        raise NotImplementedError()
+    def get_basic_dashboard_metrics(self, *args, **kwargs):
+        if self.error:
+            raise self.error
+        assert self.basic_metrics is not None
+        return self.basic_metrics
 
 
 def build_app(service: FakeDocumentService) -> TestClient:
@@ -315,3 +324,34 @@ def test_update_extracted_data_returns_404_when_missing():
 
     assert response.status_code == 404
     assert response.json()["detail"] == "missing"
+
+
+def test_get_basic_dashboard_metrics_returns_counters():
+    metrics = DashboardBasicMetricsResponse(
+        reference_year=2024,
+        reference_month=3,
+        counters=[
+            DashboardCounter(
+                key="documents_total",
+                title="Documentos",
+                subtitle="Contagem de março/2024",
+                value=12,
+            ),
+            DashboardCounter(
+                key="processing_pending",
+                title="Em processamento",
+                subtitle="Ainda analisando",
+                value=2,
+            ),
+        ],
+    )
+    client = build_app(FakeDocumentService(basic_metrics=metrics))
+
+    response = client.get("/documents/dashboard/basic-metrics")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["reference_year"] == 2024
+    assert payload["reference_month"] == 3
+    assert payload["counters"][0]["key"] == "documents_total"
+    assert payload["counters"][0]["value"] == 12
