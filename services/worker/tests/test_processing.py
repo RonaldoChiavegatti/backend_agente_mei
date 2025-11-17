@@ -1,12 +1,6 @@
-import sys
-from pathlib import Path
-
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(PROJECT_ROOT))
-
-from app.processing import build_structured_data  # noqa: E402
+from services.worker.app.processing import build_structured_data
 
 
 @pytest.mark.parametrize(

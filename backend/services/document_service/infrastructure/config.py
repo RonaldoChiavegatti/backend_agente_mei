@@ -1,7 +1,13 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
     DATABASE_URL: str
     MINIO_ENDPOINT: str
     MINIO_ACCESS_KEY: str
@@ -11,10 +17,6 @@ class Settings(BaseSettings):
     OCR_QUEUE_NAME: str = "ocr_jobs"
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 settings = Settings()

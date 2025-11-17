@@ -1,7 +1,13 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
     redis_url: str = "redis://redis:6379/0"
     mongo_url: str = "mongodb://mongo:27017"
     mongo_db: str = "mei_docs"
@@ -9,9 +15,6 @@ class Settings(BaseSettings):
     oracle_access_key_id: str
     oracle_secret_access_key: str
     oracle_bucket: str
-
-    class Config:
-        env_file = ".env"
 
 
 settings = Settings()
