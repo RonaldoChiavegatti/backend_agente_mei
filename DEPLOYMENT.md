@@ -109,6 +109,7 @@ curl http://<IP-OU-DOMINIO>/api/documents/health
 ```
 
 Cada endpoint deve retornar `200 OK` com uma resposta JSON de saúde do respectivo serviço.
+Esse é o check rápido pós-deploy para confirmar que o roteamento do gateway está preservando o prefixo das rotas de saúde.
 
 ## 9. Habilitar HTTPS (opcional)
 
