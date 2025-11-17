@@ -11,7 +11,7 @@ SPA construída com React + Vite + Tailwind para consumir os serviços do backen
 
 ```bash
 cp .env.example .env
-# ajuste VITE_API_URL se necessário
+# ajuste VITE_API_BASE_URL se necessário
 npm install
 npm run dev
 ```
