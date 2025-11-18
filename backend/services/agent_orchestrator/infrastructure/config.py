@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     BILLING_SERVICE_URL: str  # e.g., http://billing-service:8004
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
+    USE_STUB_LLM: bool = False
 
 
 settings = Settings()

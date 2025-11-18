@@ -25,6 +25,9 @@ from services.billing_service.infrastructure.dependencies import (  # noqa: E402
     get_billing_service,
 )
 from services.billing_service.infrastructure.web import api  # noqa: E402
+from services.billing_service.infrastructure.security import (  # noqa: E402
+    get_current_user_id,
+)
 from shared.models.base_models import (  # noqa: E402
     TokenUsageRecord,
     TokenUsageSummary,
@@ -71,10 +74,12 @@ class FakeBillingService:
         return self.summary
 
 
-def build_app(service: FakeBillingService) -> TestClient:
+def build_app(service: FakeBillingService, user_id: uuid.UUID | None = None) -> TestClient:
     app = FastAPI()
     app.include_router(api.router)
     app.dependency_overrides[get_billing_service] = lambda: service
+    resolved_user_id = user_id or uuid.uuid4()
+    app.dependency_overrides[get_current_user_id] = lambda: resolved_user_id
     return TestClient(app)
 
 
@@ -113,7 +118,7 @@ def test_charge_tokens_endpoint_handles_insufficient_balance():
 def test_get_balance_endpoint_returns_payload():
     user_id = uuid.uuid4()
     balance = UserBalance(user_id=user_id, balance=150, last_updated_at=datetime.utcnow())
-    client = build_app(FakeBillingService(balance=balance))
+    client = build_app(FakeBillingService(balance=balance), user_id=user_id)
 
     response = client.get(f"/billing/balance/{user_id}")
 
@@ -124,9 +129,10 @@ def test_get_balance_endpoint_returns_payload():
 
 
 def test_get_balance_endpoint_returns_404_for_missing_user():
-    client = build_app(FakeBillingService(error=UserNotFoundError("not found")))
+    user_id = uuid.uuid4()
+    client = build_app(FakeBillingService(error=UserNotFoundError("not found")), user_id=user_id)
 
-    response = client.get(f"/billing/balance/{uuid.uuid4()}")
+    response = client.get(f"/billing/balance/{user_id}")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "not found"
@@ -142,7 +148,7 @@ def test_get_transactions_endpoint_returns_records():
         description="Teste",
         document_type=None,
     )
-    client = build_app(FakeBillingService(transactions=[record]))
+    client = build_app(FakeBillingService(transactions=[record]), user_id=user_id)
 
     response = client.get(f"/billing/transactions/{user_id}")
 
@@ -161,7 +167,7 @@ def test_get_monthly_usage_endpoint_returns_summary():
         start_date=datetime.utcnow(),
         end_date=datetime.utcnow(),
     )
-    client = build_app(FakeBillingService(summary=summary))
+    client = build_app(FakeBillingService(summary=summary), user_id=user_id)
 
     response = client.get(f"/billing/monthly-usage/{user_id}")
 
