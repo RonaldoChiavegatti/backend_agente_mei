@@ -22,6 +22,11 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 def register_user_endpoint(
     user_create: UserCreate, user_service: UserService = Depends(get_user_service)
 ):
+    if not user_create.password.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Password cannot be empty.",
+        )
     try:
         user = user_service.register_user(
             full_name=user_create.full_name,

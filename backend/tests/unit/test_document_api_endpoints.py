@@ -1,11 +1,15 @@
 import importlib.metadata
 import io
 import os
+import pathlib
 import sys
 import types
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+from fastapi import HTTPException
+import pytest
 
 from fastapi import FastAPI, UploadFile
 from fastapi.testclient import TestClient
@@ -137,12 +141,14 @@ class FakeDocumentService:
         self.error = error
         self.last_document_type: DocumentType | None = None
         self.received_payload: dict | None = None
+        self.last_user_id: uuid.UUID | None = None
 
     def start_document_processing(
         self, user_id: uuid.UUID, file_name: str, file_content, document_type: DocumentType
     ) -> DocumentJobResponse:
         if self.error:
             raise self.error
+        self.last_user_id = user_id
         self.last_document_type = document_type
         assert self.job is not None
         return self.job
@@ -195,6 +201,26 @@ def build_app(service: FakeDocumentService) -> TestClient:
     app.dependency_overrides[get_document_service] = lambda: service
     app.dependency_overrides[get_current_user_id] = lambda: uuid.uuid4()
     return TestClient(app)
+
+
+class ValidationDocumentService(FakeDocumentService):
+    def start_document_processing(
+        self, user_id: uuid.UUID, file_name: str, file_content, document_type: DocumentType
+    ) -> DocumentJobResponse:
+        if pathlib.Path(file_name).suffix.lower() not in {".pdf", ".png", ".jpg", ".jpeg"}:
+            raise ValueError("Formato de arquivo não suportado. Use PDF, JPG ou PNG.")
+
+        first_byte = file_content.read(1)
+        if not first_byte:
+            raise ValueError("Arquivo vazio não pode ser processado.")
+        file_content.seek(0)
+
+        return super().start_document_processing(
+            user_id=user_id,
+            file_name=file_name,
+            file_content=file_content,
+            document_type=document_type,
+        )
 
 
 def _sample_job(user_id: uuid.UUID, job_id: uuid.UUID | None = None) -> DocumentJobResponse:
@@ -252,6 +278,63 @@ def test_upload_document_returns_job_metadata():
 
     assert result.id == job.id
     assert service.last_document_type == DocumentType.NOTA_FISCAL_EMITIDA
+
+
+def test_upload_document_endpoint_accepts_supported_files():
+    user_id = uuid.uuid4()
+    job = _sample_job(user_id=user_id)
+    service = ValidationDocumentService(job=job)
+
+    upload = UploadFile(filename="nota.pdf", file=io.BytesIO(b"pdf-bytes"))
+    result = api.upload_document(
+        file=upload,
+        document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+        user_id=user_id,
+        doc_service=service,
+    )
+
+    assert result.id == job.id
+    assert service.last_document_type == DocumentType.NOTA_FISCAL_EMITIDA
+    assert service.last_user_id == user_id
+
+
+def test_upload_document_endpoint_rejects_unsupported_extension():
+    user_id = uuid.uuid4()
+    job = _sample_job(user_id=user_id)
+    service = ValidationDocumentService(job=job)
+
+    upload = UploadFile(filename="script.exe", file=io.BytesIO(b"malicious"))
+    with pytest.raises(HTTPException) as exc_info:
+        api.upload_document(
+            file=upload,
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+            user_id=user_id,
+            doc_service=service,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert (
+        exc_info.value.detail
+        == "Formato de arquivo não suportado. Use PDF, JPG ou PNG."
+    )
+
+
+def test_upload_document_endpoint_rejects_empty_files():
+    user_id = uuid.uuid4()
+    job = _sample_job(user_id=user_id)
+    service = ValidationDocumentService(job=job)
+
+    upload = UploadFile(filename="nota.pdf", file=io.BytesIO(b""))
+    with pytest.raises(HTTPException) as exc_info:
+        api.upload_document(
+            file=upload,
+            document_type=DocumentType.NOTA_FISCAL_EMITIDA,
+            user_id=user_id,
+            doc_service=service,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Arquivo vazio não pode ser processado."
 
 
 def test_get_job_status_returns_latest_state():
