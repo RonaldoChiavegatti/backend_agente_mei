@@ -106,6 +106,11 @@ class DocumentServiceImpl(DocumentService):
         if file_extension not in allowed_extensions:
             raise ValueError("Formato de arquivo não suportado. Use PDF, JPG ou PNG.")
 
+        first_byte = file_content.read(1)
+        if not first_byte:
+            raise ValueError("Arquivo vazio não pode ser processado.")
+        file_content.seek(0)
+
         unique_file_name = f"{uuid.uuid4()}{file_extension}"
         storage_path = f"documents/{user_id}/{unique_file_name}"
 

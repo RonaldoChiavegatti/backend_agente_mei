@@ -147,6 +147,19 @@ class TestAuthProfileEndpoint(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json()["detail"], "User already exists")
 
+    def test_register_endpoint_rejects_empty_password(self):
+        response = self.client.post(
+            "/auth/register",
+            json={
+                "full_name": "Empty Password",
+                "email": "empty@example.com",
+                "password": " ",
+            },
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"], "Password cannot be empty.")
+
     def test_login_endpoint_returns_access_token_payload(self):
         token = Token(access_token="token-123", token_type="bearer")
         self.app.dependency_overrides[api.get_user_service] = lambda: FakeUserService(
@@ -173,6 +186,35 @@ class TestAuthProfileEndpoint(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()["detail"], "Invalid credentials")
+
+    def test_login_token_allows_access_to_profile(self):
+        timestamp = datetime.now(timezone.utc)
+        user = UserResponse(
+            id=self.user_id,
+            full_name="Test User",
+            email="user@example.com",
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        token = Token(access_token=str(self.user_id), token_type="bearer")
+        self.app.dependency_overrides[api.get_user_service] = lambda: FakeUserService(
+            user=user, token=token
+        )
+
+        login_response = self.client.post(
+            "/auth/login",
+            data={"username": "user@example.com", "password": "password"},
+        )
+
+        self.assertEqual(login_response.status_code, 200)
+        access_token = login_response.json()["access_token"]
+
+        profile_response = self.client.get(
+            "/auth/profile", headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+        self.assertEqual(profile_response.status_code, 200)
+        self.assertEqual(profile_response.json()["email"], "user@example.com")
 
     def test_me_endpoint_returns_full_user_payload(self):
         timestamp = datetime.now(timezone.utc)
