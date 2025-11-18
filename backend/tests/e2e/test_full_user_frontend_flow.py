@@ -17,6 +17,7 @@ os.environ.setdefault("MINIO_ACCESS_KEY", "test")
 os.environ.setdefault("MINIO_SECRET_KEY", "test")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("BILLING_SERVICE_URL", "http://localhost:8004")
+os.environ.setdefault("GEMINI_API_KEY", "test-gemini-api-key")
 
 # Stub external clients that are not needed for the integration test setup
 if "minio" not in sys.modules:
