@@ -7,6 +7,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1].parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+BACKEND_ROOT = REPO_ROOT / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
 # Passlib still imports the deprecated stdlib ``crypt`` module when available.
 # Filter the warning globally so it doesn't pollute the test output.
 warnings.filterwarnings(

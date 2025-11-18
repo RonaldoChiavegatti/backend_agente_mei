@@ -14,6 +14,7 @@ from services.billing_service.application.ports.input.billing_service import (
 )
 from services.billing_service.application.exceptions import UserNotFoundError
 from services.billing_service.infrastructure.dependencies import get_billing_service
+from services.billing_service.infrastructure.security import get_current_user_id
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 
@@ -44,8 +45,16 @@ def charge_tokens_endpoint(
 
 @router.get("/balance/{user_id}", response_model=UserBalanceResponse)
 def get_balance_endpoint(
-    user_id: uuid.UUID, service: BillingService = Depends(get_billing_service)
+    user_id: uuid.UUID,
+    service: BillingService = Depends(get_billing_service),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
+    if user_id != current_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: user does not match token subject.",
+        )
+
     try:
         balance = service.get_user_balance(user_id=user_id)
         return balance
@@ -55,8 +64,16 @@ def get_balance_endpoint(
 
 @router.get("/transactions/{user_id}", response_model=List[TokenUsageRecord])
 def get_transactions_endpoint(
-    user_id: uuid.UUID, service: BillingService = Depends(get_billing_service)
+    user_id: uuid.UUID,
+    service: BillingService = Depends(get_billing_service),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
+    if user_id != current_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: user does not match token subject.",
+        )
+
     try:
         transactions = service.get_user_transactions(user_id=user_id)
         return transactions
@@ -68,7 +85,15 @@ def get_transactions_endpoint(
     "/monthly-usage/{user_id}", response_model=TokenUsageSummaryResponse
 )
 def get_monthly_usage_endpoint(
-    user_id: uuid.UUID, service: BillingService = Depends(get_billing_service)
+    user_id: uuid.UUID,
+    service: BillingService = Depends(get_billing_service),
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
 ):
+    if user_id != current_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: user does not match token subject.",
+        )
+
     usage = service.get_user_monthly_usage(user_id=user_id)
     return usage
