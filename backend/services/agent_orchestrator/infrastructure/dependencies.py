@@ -14,6 +14,9 @@ from services.agent_orchestrator.infrastructure.adapters.persistence.postgres_ag
 from services.agent_orchestrator.infrastructure.adapters.llm.gemini_llm_provider import (
     GeminiLLMProvider,
 )
+from services.agent_orchestrator.infrastructure.adapters.llm.stub_llm_provider import (
+    StubLLMProvider,
+)
 from services.agent_orchestrator.infrastructure.adapters.billing.http_billing_service import (
     HttpBillingService,
 )
@@ -26,7 +29,11 @@ def get_orchestrator_service(db: Session = Depends(get_db)) -> OrchestratorServi
     """
     agent_repo = PostgresAgentRepository(db)
 
-    llm_provider = GeminiLLMProvider(api_key=settings.GEMINI_API_KEY)
+    llm_provider = (
+        StubLLMProvider()
+        if settings.USE_STUB_LLM
+        else GeminiLLMProvider(api_key=settings.GEMINI_API_KEY)
+    )
 
     billing_service = HttpBillingService(base_url=settings.BILLING_SERVICE_URL)
 
