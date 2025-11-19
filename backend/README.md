@@ -53,3 +53,19 @@ Os serviços estarão disponíveis nos seguintes endereços:
 ## Conectando um Frontend
 
 Para instruções sobre como conectar uma aplicação frontend a este backend, consulte o arquivo [FRONTEND_INTEGRATION.md](FRONTEND_INTEGRATION.md).
+
+## Testes End-to-End
+
+Os cenários críticos (registro/login, upload e acompanhamento de documentos e cobrança) podem ser exercitados com Pytest.
+
+1. Certifique-se de ter o Docker (com suporte ao `docker compose`) instalado.
+2. Execute os testes a partir da raiz do repositório:
+   ```bash
+   pytest backend/tests_e2e -vv
+   ```
+3. A suíte sobe automaticamente os serviços definidos em `backend/docker/docker-compose.yml` com `docker compose up -d --build` e, ao final, derruba tudo com `docker compose down -v`.
+
+Variáveis úteis:
+
+- `E2E_GATEWAY_BASE_URL`: altera o host/porta do gateway (padrão `http://localhost`).
+- `E2E_DOCUMENT_TIMEOUT`: tempo máximo (em segundos) para esperar o processamento assíncrono de documentos (padrão `240`).
