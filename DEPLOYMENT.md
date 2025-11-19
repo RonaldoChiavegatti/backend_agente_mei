@@ -61,6 +61,9 @@ Caso prefira copiar apenas os artefatos necessários, transfira para a VM o cont
 # (Opcional) obter atualizações do repositório
 git pull
 
+# Exportar a tag utilizada para nomear as imagens (use o hash atual)
+export IMAGE_TAG=$(git rev-parse --short HEAD)
+
 # Construir imagens e iniciar em segundo plano
 docker compose pull  # caso existam imagens publicadas
 docker compose up -d --build
@@ -70,11 +73,15 @@ O compose iniciará os seguintes componentes: Postgres, MongoDB, Redis, serviço
 
 Somente o NGINX publica porta na máquina host (`8080` por padrão). Os demais serviços permanecem isolados na rede interna do Docker, servindo apenas como upstreams para o proxy reverso.
 
+As variáveis `IMAGE_REGISTRY` e `IMAGE_TAG` controlam os nomes das imagens geradas. Localmente você pode mantê-las como `agente-mei` e `dev`, mas em produção defina `IMAGE_REGISTRY` para o registry usado (ex.: `ghcr.io/<org>/<repo>`) e reutilize o `IMAGE_TAG` gerado a partir do commit publicado.
+
 Para acompanhar os logs:
 
 ```bash
 docker compose logs -f
 ```
+
+Os serviços FastAPI, o worker, o frontend e o NGINX enviam logs para `stdout/stderr`. Assim, ferramentas de coleta como Elastic Agent ou Stackdriver conseguem centralizar erros e métricas direto dos logs de container. O NGINX já escreve no formato JSON para simplificar o parse nessas plataformas.
 
 ## 6. Persistência e backups
 
@@ -108,10 +115,14 @@ Após o `docker compose up`, valide se o NGINX está respondendo na porta `8080`
 ```bash
 curl http://<IP-OU-DOMINIO>:8080/api/auth/health
 curl http://<IP-OU-DOMINIO>:8080/api/documents/health
+curl http://<IP-OU-DOMINIO>:8080/api/agent/health
+curl http://<IP-OU-DOMINIO>:8080/api/billing/health
+curl http://<IP-OU-DOMINIO>:8080/healthz
 ```
 
 Cada endpoint deve retornar `200 OK` com uma resposta JSON de saúde do respectivo serviço.
 Esse é o check rápido pós-deploy para confirmar que o roteamento do gateway está preservando o prefixo das rotas de saúde.
+O endpoint `/healthz` é servido diretamente pelo NGINX e pode ser utilizado como health check do load balancer ou do orquestrador.
 
 ## 9. Habilitar HTTPS com load balancer
 
@@ -129,6 +140,7 @@ Para publicar uma nova versão:
 
 ```bash
 git pull
+export IMAGE_TAG=$(git rev-parse --short HEAD)
 docker compose up -d --build
 ```
 
@@ -139,3 +151,9 @@ docker compose down
 ```
 
 Com isso, o MVP ficará disponível externamente, com upload de documentos, OCR, dashboard e chat passando pelo gateway NGINX.
+
+## 11. Pipeline CI/CD
+
+Os merges na branch `main` disparam o workflow `.github/workflows/ci-cd.yml`. O job executa os testes automatizados via `pytest` (instalando previamente todas as dependências descritas em `requirements-test.txt`) e, somente em caso de sucesso, constrói as imagens Docker de todos os serviços (`auth`, `documents`, `agent`, `billing`, `worker`, `frontend` e `nginx`).
+
+Cada build é publicado no GitHub Container Registry (`ghcr.io/<owner>/<repo>/<servico>:<git-sha>`), permitindo que o ambiente remoto faça `docker compose pull` e utilize as mesmas versões já validadas na pipeline. Assim, os health checks configurados no NGINX e o monitoramento centralizado via logs ficam alinhados com a versão efetivamente publicada.

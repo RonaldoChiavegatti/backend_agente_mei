@@ -11,6 +11,10 @@ x-oracle-env: &oracle-env
   ORACLE_SECRET_ACCESS_KEY: ${ORACLE_SECRET_ACCESS_KEY}
   ORACLE_BUCKET: ${ORACLE_BUCKET}
 
+x-build-args: &build-args
+  args:
+    APP_VERSION: ${IMAGE_TAG:-dev}
+
 services:
   postgres:
     image: postgres:16
@@ -44,7 +48,10 @@ services:
 
   auth:
     <<: *service-defaults
-    build: ./services/auth
+    image: ${IMAGE_REGISTRY:-agente-mei}/auth:${IMAGE_TAG:-dev}
+    build:
+      context: ./services/auth
+      <<: *build-args
     container_name: auth
     depends_on:
       postgres:
@@ -52,7 +59,10 @@ services:
 
   documents:
     <<: *service-defaults
-    build: ./services/documents
+    image: ${IMAGE_REGISTRY:-agente-mei}/documents:${IMAGE_TAG:-dev}
+    build:
+      context: ./services/documents
+      <<: *build-args
     container_name: documents
     environment:
       <<: *oracle-env
@@ -64,7 +74,10 @@ services:
 
   agent:
     <<: *service-defaults
-    build: ./services/agent
+    image: ${IMAGE_REGISTRY:-agente-mei}/agent:${IMAGE_TAG:-dev}
+    build:
+      context: ./services/agent
+      <<: *build-args
     container_name: agent
     depends_on:
       postgres:
@@ -72,7 +85,10 @@ services:
 
   billing:
     <<: *service-defaults
-    build: ./services/billing
+    image: ${IMAGE_REGISTRY:-agente-mei}/billing:${IMAGE_TAG:-dev}
+    build:
+      context: ./services/billing
+      <<: *build-args
     container_name: billing
     depends_on:
       postgres:
@@ -80,7 +96,10 @@ services:
 
   worker:
     <<: *service-defaults
-    build: ./services/worker
+    image: ${IMAGE_REGISTRY:-agente-mei}/worker:${IMAGE_TAG:-dev}
+    build:
+      context: ./services/worker
+      <<: *build-args
     container_name: worker
     environment:
       <<: *oracle-env
@@ -91,7 +110,10 @@ services:
         condition: service_started
 
   frontend:
-    build: ./frontend
+    image: ${IMAGE_REGISTRY:-agente-mei}/frontend:${IMAGE_TAG:-dev}
+    build:
+      context: ./frontend
+      <<: *build-args
     container_name: frontend
     restart: unless-stopped
     environment:
@@ -108,7 +130,10 @@ services:
         condition: service_started
 
   nginx:
-    image: nginx:stable
+    image: ${IMAGE_REGISTRY:-agente-mei}/nginx:${IMAGE_TAG:-dev}
+    build:
+      context: ./nginx
+      <<: *build-args
     container_name: nginx
     restart: unless-stopped
     depends_on:
@@ -122,8 +147,6 @@ services:
         condition: service_started
     ports:
       - "${NGINX_HOST_PORT:-8080}:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
 
 volumes:
   postgres_data:

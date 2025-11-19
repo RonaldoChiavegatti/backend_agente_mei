@@ -1,6 +1,12 @@
 # Build image for the Vite dev server so the SPA can run via Docker Compose
 FROM node:20-alpine
 
+ARG APP_VERSION=dev
+LABEL org.opencontainers.image.title="frontend" \
+      org.opencontainers.image.version="$APP_VERSION" \
+      org.opencontainers.image.description="Vite dev server for Agente MEI"
+ENV APP_VERSION=$APP_VERSION
+
 WORKDIR /app
 
 # Install dependencies first to leverage Docker cache
