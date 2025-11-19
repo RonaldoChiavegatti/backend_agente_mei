@@ -9,7 +9,7 @@ ENV APP_VERSION=$APP_VERSION
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y build-essential python3-distutils \
+    && apt-get install -y build-essential python3.11-distutils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
