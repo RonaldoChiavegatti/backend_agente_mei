@@ -44,11 +44,11 @@ Para executar o projeto, você precisa ter o Docker e o Docker Compose instalado
 
 Os serviços estarão disponíveis nos seguintes endereços:
 
-- **API Gateway:** `http://localhost:8000`
-- **Serviço de Autenticação:** `http://localhost:8001`
-- **Serviço de Orquestração de Agentes:** `http://localhost:8002`
-- **Serviço de Documentos:** `http://localhost:8003`
-- **Serviço de Faturamento:** `http://localhost:8004`
+- **API Gateway (via Nginx):** `http://localhost:8080/api`
+- **Serviço de Autenticação:** acessível internamente no cluster Docker como `http://auth:8000`
+- **Serviço de Orquestração de Agentes:** acessível como `http://agent:8000`
+- **Serviço de Documentos:** acessível como `http://documents:8000`
+- **Serviço de Faturamento:** acessível como `http://billing:8000`
 
 ## Conectando um Frontend
 

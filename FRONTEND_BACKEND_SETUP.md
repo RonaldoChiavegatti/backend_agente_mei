@@ -28,10 +28,10 @@ Na raiz do projeto, construa e inicie todos os containers:
 docker-compose up --build
 ```
 
-Os serviços principais ficarão disponíveis via API Gateway em `http://localhost:<NGINX_HOST_PORT>` (por padrão, `http://localhost:8080`).
+Os serviços principais ficarão disponíveis via API Gateway em `http://localhost:<NGINX_HOST_PORT>/api` (por padrão, `http://localhost:8080/api`).
 
 ## 3. Aponte o frontend para o backend
-- Configure a base URL do frontend para o Gateway: `http://localhost:<NGINX_HOST_PORT>`.
+- Configure a base URL do frontend para o Gateway: `http://localhost:<NGINX_HOST_PORT>/api`.
 - Use os endpoints documentados em `backend/FRONTEND_INTEGRATION.md`.
 - Para rotas protegidas, obtenha um token via `POST /auth/login` e envie `Authorization: Bearer <token>` em cada requisição.
 
