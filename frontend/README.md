@@ -11,7 +11,7 @@ SPA construída com React + Vite + Tailwind para consumir os serviços do backen
 
 ```bash
 cp .env.example .env
-# ajuste VITE_API_BASE_URL para o domínio HTTPS exposto pelo load balancer
+# ajuste VITE_API_BASE_URL para o domínio/porta do proxy reverso (ex.: http://localhost:8080/api)
 npm install
 npm run dev
 ```

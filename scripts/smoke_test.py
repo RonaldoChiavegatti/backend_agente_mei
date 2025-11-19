@@ -3,7 +3,7 @@ Smoke script to quickly validate the public API flow:
 register -> login -> profile -> billing -> upload (with polling) -> chat.
 
 Configure with environment variables or CLI flags:
-- SMOKE_BASE_URL / --base-url: API gateway base URL (default: http://localhost:8000/api)
+- SMOKE_BASE_URL / --base-url: API gateway base URL (default: http://localhost:8080/api)
 - SMOKE_AGENT_ID / --agent-id: UUID of an existing agent for the chat step.
 - SMOKE_DOCUMENT_TYPE / --document-type: Optional document type for upload.
 """
@@ -19,7 +19,7 @@ from typing import Any, Dict
 import requests
 
 
-DEFAULT_BASE_URL = "http://localhost:8000/api"
+DEFAULT_BASE_URL = "http://localhost:8080/api"
 DEFAULT_DOCUMENT_TYPE = "NOTA_FISCAL_EMITIDA"
 
 
@@ -121,7 +121,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--base-url",
         default=os.environ.get("SMOKE_BASE_URL", DEFAULT_BASE_URL),
-        help="API Gateway base URL (default: http://localhost:8000/api)",
+        help="API Gateway base URL (default: http://localhost:8080/api)",
     )
     parser.add_argument(
         "--agent-id",

@@ -5,13 +5,13 @@ set -euo pipefail
 # register -> login -> profile -> billing -> upload (with polling) -> chat.
 #
 # Configuration via environment variables (with defaults in parentheses):
-#   SMOKE_BASE_URL      Base URL for the API gateway (http://localhost:8000/api)
+#   SMOKE_BASE_URL      Base URL for the API gateway (http://localhost:8080/api)
 #   SMOKE_AGENT_ID      UUID of the agent to use for chat (required)
 #   SMOKE_DOCUMENT_TYPE Document type for upload (NOTA_FISCAL_EMITIDA)
 #   SMOKE_POLL_ATTEMPTS Number of polling attempts for the upload job (10)
 #   SMOKE_POLL_DELAY    Seconds between polling attempts (1)
 
-BASE_URL=${SMOKE_BASE_URL:-"http://localhost:8000/api"}
+BASE_URL=${SMOKE_BASE_URL:-"http://localhost:8080/api"}
 AGENT_ID=${SMOKE_AGENT_ID:-""}
 DOCUMENT_TYPE=${SMOKE_DOCUMENT_TYPE:-"NOTA_FISCAL_EMITIDA"}
 POLL_ATTEMPTS=${SMOKE_POLL_ATTEMPTS:-10}

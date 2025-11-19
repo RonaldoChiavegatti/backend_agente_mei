@@ -6,7 +6,7 @@ Este documento fornece instruções sobre como conectar uma aplicação frontend
 
 Todas as requisições da sua aplicação frontend devem ser direcionadas para o API Gateway, que é o ponto de entrada único para o backend. O Gateway é responsável por rotear sua requisição para o microserviço correto.
 
-**URL Base do API Gateway:** `http://localhost:8000`
+**URL Base do API Gateway:** `http://localhost:8080/api`
 
 ## Fluxo de Autenticação
 
@@ -17,7 +17,7 @@ A maioria das rotas do backend é protegida e requer um token de autenticação.
 Primeiro, crie uma conta de usuário.
 
 - **Endpoint:** `POST /auth/register`
-- **URL Completa:** `http://localhost:8000/auth/register`
+- **URL Completa:** `http://localhost:8080/api/auth/register`
 - **Body:**
   ```json
   {
@@ -32,7 +32,7 @@ Primeiro, crie uma conta de usuário.
 Após o registro, faça login para receber um token de acesso JWT (JSON Web Token).
 
 - **Endpoint:** `POST /auth/login`
-- **URL Completa:** `http://localhost:8000/auth/login`
+- **URL Completa:** `http://localhost:8080/api/auth/login`
 - **Body (form-data):**
   - `username`: `seu@email.com`
   - `password`: `sua_senha`
@@ -64,7 +64,7 @@ Abaixo estão os principais endpoints que você pode consumir a partir do seu fr
 ### Serviço de Agentes (`/chat`)
 
 - `POST /chat`: Envia uma mensagem para um agente de IA. **(Requer autenticação)**
-  - **URL:** `http://localhost:8000/chat`
+  - **URL:** `http://localhost:8080/api/chat`
   - **Exemplo de Body:**
     ```json
     {
@@ -77,23 +77,23 @@ Abaixo estão os principais endpoints que você pode consumir a partir do seu fr
 ### Serviço de Documentos (`/documents`)
 
 - `POST /documents/upload`: Faz o upload de um arquivo para processamento. **(Requer autenticação)**
-  - **URL:** `http://localhost:8000/documents/upload`
+  - **URL:** `http://localhost:8080/api/documents/upload`
   - **Body:** `multipart/form-data` com um campo `file`.
 
 - `GET /documents/jobs/{job_id}`: Consulta o status de um trabalho de processamento. **(Requer autenticação)**
-  - **URL:** `http://localhost:8000/documents/jobs/<job_id>`
+  - **URL:** `http://localhost:8080/api/documents/jobs/<job_id>`
 
 - `GET /documents/jobs`: Lista todos os trabalhos de um usuário. **(Requer autenticação)**
-  - **URL:** `http://localhost:8000/documents/jobs`
+  - **URL:** `http://localhost:8080/api/documents/jobs`
 
 ### Serviço de Faturamento (`/billing`)
 
 Os endpoints de faturamento são, em sua maioria, para comunicação interna entre serviços, mas você pode querer expor o saldo e o histórico para o usuário.
 
 - `GET /billing/balance/{user_id}`: Retorna o saldo do usuário. **(Requer autenticação e que o `user_id` seja o do usuário autenticado)**
-  - **URL:** `http://localhost:8000/billing/balance/<user_id>`
+  - **URL:** `http://localhost:8080/api/billing/balance/<user_id>`
 
 - `GET /billing/transactions/{user_id}`: Retorna o histórico de transações do usuário. **(Requer autenticação e que o `user_id` seja o do usuário autenticado)**
-  - **URL:** `http://localhost:8000/billing/transactions/<user_id>`
+  - **URL:** `http://localhost:8080/api/billing/transactions/<user_id>`
 
 Lembre-se de que, para os endpoints que incluem `{user_id}` no path, você precisará obter o ID do usuário autenticado, que geralmente está contido no payload do token JWT.
