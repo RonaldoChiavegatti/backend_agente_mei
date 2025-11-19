@@ -1,0 +1,6 @@
+-r backend/services/auth_service/requirements.txt
+-r backend/services/agent_orchestrator/requirements.txt
+-r backend/services/billing_service/requirements.txt
+-r backend/services/document_service/requirements.txt
+requests==2.32.3
+pytest==8.2.1
