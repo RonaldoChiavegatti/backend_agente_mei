@@ -90,6 +90,23 @@ services:
       documents:
         condition: service_started
 
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:${NGINX_HOST_PORT:-8080}/api}
+      HOST: 0.0.0.0
+      PORT: 5173
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "${FRONTEND_HOST_PORT:-5173}:5173"
+    depends_on:
+      nginx:
+        condition: service_started
+
   nginx:
     image: nginx:stable
     container_name: nginx
@@ -111,3 +128,4 @@ services:
 volumes:
   postgres_data:
   mongo_data:
+  frontend_node_modules:
